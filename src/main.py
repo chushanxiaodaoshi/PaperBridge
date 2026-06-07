@@ -11,7 +11,7 @@ def main():
     paper_text = paper_text_path.read_text(encoding="utf-8")
 
     learner_level = "beginner, has little background in reinforcement learning and robotics"
-    explain_style = "中文讲解，尽量像B站科普老师一样，先讲直觉，再讲方法，少堆公式"
+    explain_style = explain_style = "中文讲解，面向初学者，要求清晰、准确、克制；先讲问题和直觉，再讲方法；不要使用幼稚比喻或夸张口号"
 
     agent = PaperUnderstandingAgent()
 

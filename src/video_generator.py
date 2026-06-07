@@ -9,7 +9,7 @@ except ImportError:
     from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 
 
-PPT_PATH = "outputs/paperbridge_slides.pptx"
+PPT_PATH = "outputs/paperbridge_grounded_slides.pptx"
 PDF_DIR = "outputs/pdf"
 IMAGE_DIR = "outputs/slide_images"
 AUDIO_DIR = "outputs/audio"
@@ -94,7 +94,7 @@ def create_video_from_images_and_audio(
 
     for image_path in image_paths:
         slide_no = int(image_path.stem.split("_")[-1])
-        audio_path = audio_dir / f"slide_{slide_no:02d}.mp3"
+        audio_path = audio_dir / f"slide_{slide_no:02d}.wav"
 
         if not audio_path.exists():
             print(f"警告：找不到第 {slide_no} 页音频，跳过：{audio_path}")
