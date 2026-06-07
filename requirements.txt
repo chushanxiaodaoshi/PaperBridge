@@ -1,0 +1,7 @@
+pymupdf
+python-pptx
+edge-tts
+moviepy
+openai
+python-dotenv
+graphviz

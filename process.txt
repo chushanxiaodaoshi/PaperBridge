@@ -1,0 +1,34 @@
+PDF
+ ↓
+pdf_parser.py
+提取论文文本
+ ↓
+agents.py
+问 Qwen：整篇论文讲了什么？
+ ↓
+paper_analysis.json
+ ↓
+paragraph_indexer.py
+问 Qwen：每个 evidence block 是什么意思？
+ ↓
+paragraph_index.json
+ ↓
+grounded_slide_planner.py
+问 Qwen：根据段落证据生成 10 页 PPT 规划
+ ↓
+grounded_slides.json
+ ↓
+fix_grounded_evidence.py
+补全 page、source_excerpt、summary
+ ↓
+ppt_generator.py
+生成 PPT
+ ↓
+narration_generator.py
+问 Qwen：给每页生成中文讲解稿
+ ↓
+tts_generator.py
+生成语音
+ ↓
+video_generator.py
+合成视频
