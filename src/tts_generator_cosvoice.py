@@ -2,24 +2,23 @@ import os
 import re
 import json
 import time
-import asyncio
 import subprocess
 from pathlib import Path
 
-import edge_tts
 from dotenv import load_dotenv
+import dashscope
+from dashscope.audio.tts_v2 import SpeechSynthesizer
 
 
 load_dotenv(dotenv_path=Path(".env"))
+dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
 
 NARRATION_PATH = "outputs/narration.json"
 AUDIO_DIR = Path("outputs/audio")
 TMP_DIR = AUDIO_DIR / "_tmp"
 
-EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "zh-CN-YunyangNeural")
-EDGE_TTS_RATE = os.getenv("EDGE_TTS_RATE", "+6%")
-EDGE_TTS_VOLUME = os.getenv("EDGE_TTS_VOLUME", "+0%")
-EDGE_TTS_PROXY = os.getenv("EDGE_TTS_PROXY", "").strip()
+TTS_MODEL = os.getenv("TTS_MODEL", "cosyvoice-v1")
+TTS_VOICE = os.getenv("TTS_VOICE", "longxiang")
 
 SAMPLE_RATE = 48000
 
@@ -30,25 +29,17 @@ def run(cmd):
 
 def clean_text(text):
     text = str(text).strip()
-
-    replace_map = {
-        "PMSM": "P M S M",
-        "CMA-ES": "C M A E S",
-        "PPO": "P P O",
-        "CoT": "C O T",
-        "sim-to-real": "sim to real",
-        "zero-shot": "zero shot",
-    }
-
-    for k, v in replace_map.items():
-        text = text.replace(k, v)
-
+    text = text.replace("PMSM", "P M S M")
+    text = text.replace("CMA-ES", "C M A E S")
+    text = text.replace("PPO", "P P O")
+    text = text.replace("CoT", "C O T")
+    text = text.replace("sim-to-real", "sim to real")
+    text = text.replace("zero-shot", "zero shot")
     return text
 
 
 def split_sentences(text):
     text = clean_text(text)
-
     parts = re.split(r"(?<=[。！？；])", text)
     parts = [p.strip() for p in parts if p.strip()]
 
@@ -73,24 +64,27 @@ def check_audio(path: Path):
     return path.exists() and path.stat().st_size > 1024
 
 
-async def synthesize_sentence(text, mp3_path: Path, max_retries=3):
+def synthesize_sentence(text, mp3_path: Path, max_retries=3):
+    if not dashscope.api_key:
+        raise RuntimeError("没有读取到 DASHSCOPE_API_KEY，请检查 .env 文件。")
+
+    synthesizer = SpeechSynthesizer(
+        model=TTS_MODEL,
+        voice=TTS_VOICE,
+    )
+
     for attempt in range(1, max_retries + 1):
         try:
             if mp3_path.exists():
                 mp3_path.unlink()
 
-            kwargs = {
-                "text": text,
-                "voice": EDGE_TTS_VOICE,
-                "rate": EDGE_TTS_RATE,
-                "volume": EDGE_TTS_VOLUME,
-            }
+            print(f"    使用 tts_v2 合成：{text[:30]}...")
+            audio = synthesizer.call(text)
 
-            if EDGE_TTS_PROXY:
-                kwargs["proxy"] = EDGE_TTS_PROXY
+            if not audio:
+                raise RuntimeError("DashScope 没有返回音频数据。")
 
-            communicate = edge_tts.Communicate(**kwargs)
-            await communicate.save(str(mp3_path))
+            mp3_path.write_bytes(audio)
 
             if not check_audio(mp3_path):
                 raise RuntimeError(f"音频文件无效或过小：{mp3_path}")
@@ -101,7 +95,7 @@ async def synthesize_sentence(text, mp3_path: Path, max_retries=3):
             print(f"    第 {attempt}/{max_retries} 次失败：{e}")
             if mp3_path.exists():
                 mp3_path.unlink()
-            await asyncio.sleep(2)
+            time.sleep(1.5)
 
     raise RuntimeError(f"句子音频生成失败：{text[:40]}")
 
@@ -136,6 +130,7 @@ def concat_wavs(wav_paths, output_path: Path):
         for p in wav_paths:
             f.write(f"file '{p.resolve()}'\n")
 
+    # 先拼接原始音频
     run([
         "ffmpeg", "-y",
         "-f", "concat",
@@ -145,7 +140,7 @@ def concat_wavs(wav_paths, output_path: Path):
         str(raw_path),
     ])
 
-    # 后处理：降噪感、压缩、限幅，防爆音
+    # 再做防爆音后处理
     run([
         "ffmpeg", "-y",
         "-i", str(raw_path),
@@ -154,7 +149,7 @@ def concat_wavs(wav_paths, output_path: Path):
         "lowpass=f=12000,"
         "acompressor=threshold=-18dB:ratio=4:attack=5:release=80,"
         "alimiter=limit=0.82:attack=5:release=50,"
-        "volume=0.85",
+        "volume=0.72",
         "-ar", str(SAMPLE_RATE),
         "-ac", "1",
         "-acodec", "pcm_s16le",
@@ -166,8 +161,7 @@ def concat_wavs(wav_paths, output_path: Path):
     if raw_path.exists():
         raw_path.unlink()
 
-
-async def generate_slide_audio(slide_no, text, output_path: Path):
+def generate_slide_audio(slide_no, text, output_path: Path):
     sentences = split_sentences(text)
 
     if not sentences:
@@ -185,9 +179,8 @@ async def generate_slide_audio(slide_no, text, output_path: Path):
         sent_wav = slide_tmp / f"sent_{i:02d}.wav"
         silence_wav = slide_tmp / f"silence_{i:02d}.wav"
 
-        print(f"  合成句子 {i}/{len(sentences)}：{sent[:34]}...")
-
-        await synthesize_sentence(sent, sent_mp3)
+        print(f"  合成句子 {i}/{len(sentences)}")
+        synthesize_sentence(sent, sent_mp3)
         convert_to_wav(sent_mp3, sent_wav)
         wav_parts.append(sent_wav)
 
@@ -211,7 +204,7 @@ async def generate_slide_audio(slide_no, text, output_path: Path):
     print(f"生成成功：{output_path}")
 
 
-async def main_async():
+def main():
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     TMP_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -221,10 +214,8 @@ async def main_async():
     if not slides:
         raise RuntimeError("narration.json 中没有 slides，请先生成讲解稿。")
 
-    print(f"当前使用 Edge TTS voice={EDGE_TTS_VOICE}, rate={EDGE_TTS_RATE}, volume={EDGE_TTS_VOLUME}")
-
-    if EDGE_TTS_PROXY:
-        print(f"当前代理：{EDGE_TTS_PROXY}")
+    print(f"当前使用：TTS_MODEL={TTS_MODEL}, TTS_VOICE={TTS_VOICE}")
+    print("当前接口：dashscope.audio.tts_v2")
 
     for slide in slides:
         slide_no = int(slide.get("slide_no"))
@@ -233,10 +224,10 @@ async def main_async():
         output_path = AUDIO_DIR / f"slide_{slide_no:02d}.wav"
 
         print(f"\n正在生成第 {slide_no} 页音频：{output_path}")
-        await generate_slide_audio(slide_no, text, output_path)
+        generate_slide_audio(slide_no, text, output_path)
 
     print("\n所有音频生成完成。")
 
 
 if __name__ == "__main__":
-    asyncio.run(main_async())
+    main()

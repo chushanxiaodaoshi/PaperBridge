@@ -1,0 +1,33 @@
+下面是一套论文讲解 PPT 的全部可见内容和相关 evidence。
+
+PPT 内容：
+{json.dumps(slides_text, ensure_ascii=False, indent=2)}
+
+请提取这套 PPT 中出现的所有专业术语。
+
+专业术语包括但不限于：
+- 机器人、控制、强化学习、仿真、系统辨识、能耗建模相关术语
+- 英文缩写，如 RL、PMSM、PPO、CMA-ES、CoT
+- 中英文混合术语，如 sim-to-real gap、domain randomization、reward function
+- 对小白来说需要解释的论文关键词
+
+要求：
+1. 尽可能完整，不要限制为 8 到 12 个。
+2. 只提取 PPT 中真实出现或强相关的术语。
+3. 全局去重，同义词合并；例如“仿真到现实迁移”和“sim-to-real”可以放同一个术语。
+4. explanation 控制在 45 个中文字以内。
+5. explanation 要像老师讲课，通俗准确，不要像百科词条。
+6. first_slide_no 写这个术语最早出现在哪一页。
+7. 严格输出 JSON。
+
+输出格式：
+{{
+  "glossary": [
+    {{
+      "term": "sim-to-real gap",
+      "aliases": ["仿真到现实鸿沟", "sim-to-real"],
+      "explanation": "仿真里表现好，但真机表现变差的差距。",
+      "first_slide_no": 2
+    }}
+  ]
+}}

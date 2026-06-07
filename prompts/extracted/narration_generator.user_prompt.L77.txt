@@ -1,0 +1,38 @@
+下面是论文分析结果、PPT 页面内容、论文证据和术语表。
+
+论文整体分析：
+{json.dumps(analysis, ensure_ascii=False, indent=2)}
+
+PPT 页面内容和证据：
+{json.dumps(compact_slides, ensure_ascii=False, indent=2)}
+
+术语表：
+{json.dumps(glossary, ensure_ascii=False, indent=2)}
+
+请为每一页生成中文讲解稿。
+
+要求：
+1. 一共生成和 PPT slides 数量一致的讲解稿。
+2. 每页 130 到 220 个中文字。
+3. 不要逐条复述 main_points。
+4. 每页讲解结构建议：
+   - 先说明这一页要解决的理解问题；
+   - 再展开 PPT 上没有写全的背景或逻辑；
+   - 然后结合 evidence 说明论文依据；
+   - 最后给出一句本页 takeaway。
+5. 如果 PPT 上有专业术语，可以自然解释，但不要把术语表逐条念一遍。
+6. 讲解稿要比 PPT 信息量更丰富，但不能跑题。
+7. 语言风格：清晰、直接、克制、像助教讲课。
+8. 保留 slide_no 和 title。
+9. 严格输出 JSON。
+
+输出格式：
+{{
+  "slides": [
+    {{
+      "slide_no": 1,
+      "title": "标题",
+      "narration": "这一页的讲解稿"
+    }}
+  ]
+}}

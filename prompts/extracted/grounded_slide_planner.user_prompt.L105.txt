@@ -1,0 +1,99 @@
+现在要为一篇论文生成“有论文依据”的中文讲解 PPT。
+
+论文标题：
+{paper_title}
+
+已有的整篇论文分析：
+{json.dumps(analysis, ensure_ascii=False, indent=2)}
+
+论文段落索引：
+{compact_index}
+
+请生成一个 grounded slide plan。
+
+要求：
+1. 一共 10 页。
+2. 每页要有 title、purpose、main_points、evidence_paragraph_ids、visual_type、layout_hint、narration_focus。
+3. main_points 必须紧扣 evidence_paragraph_ids 对应段落，不要脱离论文。
+4. evidence_paragraph_ids 每页选 2 到 5 个，必须从段落索引中的 [P数字] 选择。
+5. 第 5 页必须是真正的层级思维导图，不要只是 Background / Method / Experiments / Conclusion 四个卡片。
+6. 思维导图要体现：
+   - 前置知识
+   - 论文问题
+   - 核心方法
+   - 实验验证
+   - 小白读完应该形成的理解
+7. 第 6 页必须是方法流程图。
+8. 不要编造论文没有的内容。
+9. 输出必须是 JSON。
+
+请严格按照下面格式输出：
+
+{{
+  "paper_title": "论文标题",
+  "slides": [
+    {{
+      "slide_no": 1,
+      "title": "标题页",
+      "purpose": "这一页的教学目的",
+      "main_points": [
+        "这一页的要点1",
+        "这一页的要点2"
+      ],
+      "evidence_paragraph_ids": [1, 2],
+      "visual_type": "title",
+      "layout_hint": "标题 + 一句话总结 + 论文来源段落摘要",
+      "narration_focus": "讲解稿应重点说明什么"
+    }}
+  ],
+  "mind_map": {{
+    "root": "论文标题或核心主题",
+    "children": [
+      {{
+        "name": "Prerequisite Knowledge",
+        "children": [
+          {{
+            "name": "知识点1",
+            "children": []
+          }}
+        ]
+      }},
+      {{
+        "name": "Research Problem",
+        "children": []
+      }},
+      {{
+        "name": "Core Method",
+        "children": []
+      }},
+      {{
+        "name": "Experiments",
+        "children": []
+      }},
+      {{
+        "name": "Takeaways",
+        "children": []
+      }}
+    ]
+  }},
+  "method_flow": [
+    {{
+      "step_no": 1,
+      "name": "步骤名称",
+      "description": "这一步做什么",
+      "evidence_paragraph_ids": [3, 4]
+    }}
+  ]
+}}
+
+10 页 PPT 固定对应：
+1. 标题页
+2. 这篇论文在解决什么问题
+3. 读懂它需要哪些前置知识
+4. 推荐学习路径
+5. 真正的论文理解思维导图
+6. 核心方法流程图
+7. 关键概念解释
+8. 小白容易卡住的地方
+9. 读完这篇论文应该记住什么
+10. 自测题
