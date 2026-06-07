@@ -269,6 +269,36 @@ def add_evidence_box(slide, evidence, x, y, w, h, max_items=4):
     return shape
 
 
+
+def add_terms_box(slide, terms, x, y, w, h):
+    if not terms:
+        add_card(
+            slide,
+            "Key terms for beginners",
+            "No key terms selected for this slide.",
+            x, y, w, h,
+            fill=COLOR_WHITE,
+            border=COLOR_GRAY,
+            title_color=COLOR_PURPLE,
+            body_size=12,
+        )
+        return
+
+    lines = []
+    for item in terms[:4]:
+        term = truncate(item.get("term", ""), 24)
+        explanation = truncate(item.get("explanation", ""), 58)
+        if term and explanation:
+            lines.append(f"{term}: {explanation}")
+
+    add_bullet_box(
+        slide,
+        "Key terms for beginners",
+        lines if lines else ["No key terms selected for this slide."],
+        x, y, w, h,
+        max_item_len=95,
+    )
+
 def add_connector(slide, x1, y1, x2, y2, color=COLOR_MUTED):
     line = slide.shapes.add_connector(
         MSO_CONNECTOR.STRAIGHT,
@@ -295,82 +325,208 @@ def flatten_mind_children(node):
     return node.get("children", []) if isinstance(node, dict) else []
 
 
+def collect_child_names(node, max_items=4):
+    """
+    把 mind_map 中某个一级节点下面的内容压成几条短 bullet。
+    只取两层，避免 PPT 过密。
+    """
+    if not isinstance(node, dict):
+        return []
+
+    lines = []
+    for child in node.get("children", []):
+        name = child.get("name", "")
+        if name:
+            lines.append(name)
+
+        # 如果还有二级子节点，挑最重要的一两个
+        for sub in child.get("children", [])[:2]:
+            sub_name = sub.get("name", "")
+            if sub_name:
+                lines.append(sub_name)
+
+        if len(lines) >= max_items:
+            break
+
+    return lines[:max_items]
+
+
+def add_map_column(slide, index, title, items, x, y, w, h, fill, border):
+    """
+    一列学习地图卡片：顶部编号 + 标题 + 3~4条短解释。
+    """
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE,
+        Inches(x),
+        Inches(y),
+        Inches(w),
+        Inches(h),
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = fill
+    shape.line.color.rgb = border
+    shape.line.width = Pt(1.3)
+
+    tf = shape.text_frame
+    tf.clear()
+    tf.word_wrap = True
+    tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+    tf.margin_left = Inches(0.14)
+    tf.margin_right = Inches(0.14)
+    tf.margin_top = Inches(0.10)
+    tf.margin_bottom = Inches(0.08)
+
+    p = tf.paragraphs[0]
+    r = p.add_run()
+    r.text = f"{index}. {title}"
+    set_run_font(r, size=14.5, bold=True, color=border)
+
+    for item in items[:4]:
+        p = tf.add_paragraph()
+        p.space_before = Pt(4)
+        r = p.add_run()
+        r.text = "• " + truncate(item, 34)
+        set_run_font(r, size=10.3, color=COLOR_TEXT)
+
+    return shape
+
+
 def draw_mind_map(slide, mind_map):
     """
-    真正画一个层级导图：
-    root 在中间，上下左右分布一级节点，每个一级节点下面放二级节点。
+    改进版：不再使用中心放射状连线。
+    使用从左到右的 learning map：
+    Prerequisite -> Problem -> Method -> Experiments -> Takeaways
     """
-    root_name = truncate(mind_map.get("root", "Paper"), 52)
     children = flatten_mind_children(mind_map)
 
-    root = add_card(
-        slide,
-        "Core Paper",
-        root_name,
-        4.65,
-        1.42,
-        4.0,
-        0.95,
-        fill=COLOR_LIGHT_BLUE,
-        border=COLOR_BLUE,
-        title_color=COLOR_BLUE,
-        body_size=12,
-    )
+    # 按名称找对应节点，避免模型输出顺序变化
+    def find_node(keyword):
+        for child in children:
+            name = child.get("name", "").lower()
+            if keyword.lower() in name:
+                return child
+        return {}
 
-    # 最多展示 5 个一级节点，避免太挤
-    positions = [
-        (0.55, 1.25, COLOR_LIGHT_GREEN, COLOR_GREEN),
-        (9.15, 1.25, COLOR_LIGHT_ORANGE, COLOR_ORANGE),
-        (0.55, 4.45, COLOR_LIGHT_PURPLE, COLOR_PURPLE),
-        (9.15, 4.45, COLOR_LIGHT_BLUE, COLOR_BLUE),
-        (4.65, 5.55, RGBColor(254, 249, 195), RGBColor(202, 138, 4)),
+    nodes = [
+        ("Prerequisite", "Prerequisite Knowledge", find_node("Prerequisite"), COLOR_LIGHT_GREEN, COLOR_GREEN),
+        ("Problem", "Research Problem", find_node("Problem"), COLOR_LIGHT_ORANGE, COLOR_ORANGE),
+        ("Method", "Core Method", find_node("Method"), COLOR_LIGHT_PURPLE, COLOR_PURPLE),
+        ("Experiments", "Experiments", find_node("Experiments"), COLOR_LIGHT_BLUE, COLOR_BLUE),
+        ("Takeaways", "Takeaways", find_node("Takeaways"), RGBColor(254, 249, 195), RGBColor(202, 138, 4)),
     ]
 
-    root_center = (6.65, 1.9)
+    # 顶部核心主题
+    root_name = truncate(mind_map.get("root", "Core Paper"), 95)
+    add_card(
+        slide,
+        "Core idea of the paper",
+        root_name,
+        1.0,
+        1.18,
+        11.35,
+        0.72,
+        fill=COLOR_WHITE,
+        border=COLOR_BLUE,
+        title_color=COLOR_BLUE,
+        body_size=12.5,
+    )
 
-    for i, child in enumerate(children[:5]):
-        x, y, fill, border = positions[i]
-        name = truncate(child.get("name", f"Node {i+1}"), 40)
+    # 五列横向学习地图
+    start_x = 0.55
+    y = 2.35
+    w = 2.35
+    h = 2.75
+    gap = 0.23
 
-        child_shape = add_card(
+    col_centers = []
+
+    for i, (short_title, full_title, node, fill, border) in enumerate(nodes):
+        x = start_x + i * (w + gap)
+        items = collect_child_names(node, max_items=4)
+
+        if not items:
+            items = ["No items generated"]
+
+        add_map_column(
             slide,
-            name,
-            "",
+            i + 1,
+            short_title,
+            items,
             x,
             y,
-            3.65,
-            0.62,
-            fill=fill,
-            border=border,
-            title_color=border,
-            body_size=10,
+            w,
+            h,
+            fill,
+            border,
         )
 
-        # 连接 root 和一级节点
-        child_center = (x + 1.82, y + 0.31)
-        add_connector(slide, root_center[0], root_center[1], child_center[0], child_center[1], border)
+        col_centers.append((x + w / 2, y + h / 2))
 
-        # 二级节点
-        subchildren = child.get("children", [])[:4]
-        for j, sub in enumerate(subchildren):
-            sx = x + 0.15
-            sy = y + 0.82 + j * 0.47
-            sname = truncate(sub.get("name", ""), 38)
-            sub_shape = slide.shapes.add_shape(
-                MSO_SHAPE.ROUNDED_RECTANGLE,
-                Inches(sx),
-                Inches(sy),
-                Inches(3.35),
-                Inches(0.34),
-            )
-            sub_shape.fill.solid()
-            sub_shape.fill.fore_color.rgb = COLOR_WHITE
-            sub_shape.line.color.rgb = border
-            sub_shape.line.width = Pt(0.7)
-            set_shape_text(sub_shape, sname, font_size=9.5, color=COLOR_TEXT, align=PP_ALIGN.CENTER)
+    # 横向箭头，避免交叉
+    for i in range(len(col_centers) - 1):
+        x1 = start_x + i * (w + gap) + w
+        x2 = start_x + (i + 1) * (w + gap)
+        yy = y + h / 2
 
-            # 连接一级和二级
-            add_connector(slide, x + 1.82, y + 0.62, sx + 1.67, sy, border)
+        add_connector(slide, x1, yy, x2, yy, COLOR_MUTED)
+
+        arrow = slide.shapes.add_textbox(
+            Inches(x1 + 0.03),
+            Inches(yy - 0.17),
+            Inches(0.22),
+            Inches(0.25),
+        )
+        tf = arrow.text_frame
+        tf.clear()
+        p = tf.paragraphs[0]
+        r = p.add_run()
+        r.text = "→"
+        set_run_font(r, size=15, bold=True, color=COLOR_MUTED)
+
+    # 底部一句总结，不再塞大 evidence 框
+    add_card(
+        slide,
+        "How to read this map",
+        "Start from prerequisite concepts, then understand the problem, method, experiments, and final takeaways.",
+        1.1,
+        5.55,
+        11.1,
+        0.62,
+        fill=COLOR_WHITE,
+        border=COLOR_GRAY,
+        title_color=COLOR_DARK,
+        body_size=11.5,
+    )
+
+
+def add_mindmap_evidence_footer(slide, evidence):
+    """
+    思维导图页只放很小的 evidence anchors，不放大段原文，避免压住图。
+    """
+    if not evidence:
+        text = "Evidence anchors: generated from paragraph-level paper evidence."
+    else:
+        anchors = []
+        for ev in evidence[:5]:
+            pid = ev.get("paragraph_id", "?")
+            page = ev.get("page_start", "?")
+            section = ev.get("section_guess", "Other")
+            anchors.append(f"P{pid}/Page {page}/{section}")
+        text = "Evidence anchors: " + " · ".join(anchors)
+
+    box = slide.shapes.add_textbox(
+        Inches(0.75),
+        Inches(6.52),
+        Inches(11.8),
+        Inches(0.28),
+    )
+    tf = box.text_frame
+    tf.clear()
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    r = p.add_run()
+    r.text = truncate(text, 170)
+    set_run_font(r, size=8.8, color=COLOR_MUTED)
 
 
 # ---------- 特殊页面：方法流程图 ----------
@@ -514,18 +670,21 @@ def create_general_slide(prs, slide_data):
     add_bg(slide)
 
     slide_no = slide_data.get("slide_no", "")
-    title = slide_data.get("title", f"Slide {slide_no}")
+    title = slide_data.get("annotated_title", slide_data.get("title", f"Slide {slide_no}"))
     purpose = slide_data.get("purpose", "")
 
     add_title(slide, f"{slide_no}. {title}", purpose)
 
-    main_points = slide_data.get("main_points", [])
+    main_points = slide_data.get(
+        "annotated_main_points",
+        slide_data.get("main_points", [])
+    )
     evidence = slide_data.get("verified_evidence", [])
-    narration_focus = slide_data.get("narration_focus", "")
     visual_type = slide_data.get("visual_type", "")
 
     add_label(slide, f"Visual Type: {visual_type}", 0.65, 1.28, 2.1, 0.32, COLOR_GREEN)
 
+    # 左侧：主要观点，拉高
     add_bullet_box(
         slide,
         "Main points",
@@ -533,32 +692,19 @@ def create_general_slide(prs, slide_data):
         0.65,
         1.75,
         6.05,
-        3.75,
-        max_item_len=100,
+        4.95,
+        max_item_len=115,
     )
 
+    # 右侧：论文依据，拉高
     add_evidence_box(
         slide,
         evidence,
         7.05,
         1.75,
         5.6,
-        3.75,
+        4.95,
         max_items=4,
-    )
-
-    add_card(
-        slide,
-        "Narration focus",
-        truncate(narration_focus, 220),
-        0.65,
-        5.85,
-        12.0,
-        0.88,
-        fill=COLOR_WHITE,
-        border=COLOR_GRAY,
-        title_color=COLOR_PURPLE,
-        body_size=12,
     )
 
     return slide
@@ -570,14 +716,14 @@ def create_mind_map_slide(prs, slide_data, mind_map):
 
     add_title(
         slide,
-        "5. 论文理解思维导图",
-        "A hierarchical map for prerequisite knowledge, research problem, method, experiments, and takeaways."
+        "5. 论文理解学习地图",
+        "A beginner-friendly learning map from prerequisites to takeaways."
     )
 
     draw_mind_map(slide, mind_map)
 
     evidence = slide_data.get("verified_evidence", [])
-    add_evidence_box(slide, evidence, 0.65, 6.38, 12.05, 0.78, max_items=3)
+    add_mindmap_evidence_footer(slide, evidence)
 
     return slide
 
@@ -599,6 +745,122 @@ def create_method_flow_slide(prs, slide_data, method_flow):
     add_evidence_box(slide, evidence, 1.0, 6.15, 11.3, 0.85, max_items=3)
 
     return slide
+
+
+
+def chunk_items(items, size):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+def create_glossary_slide(prs, glossary_items, page_index, total_pages):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    add_bg(slide)
+
+    add_title(
+        slide,
+        f"{10 + page_index}. 专业名词注释表（{page_index}/{total_pages}）",
+        "Terms marked with 〔1〕〔2〕... in previous slides are explained here."
+    )
+
+    if not glossary_items:
+        add_card(
+            slide,
+            "No glossary generated",
+            "Run python src/term_explainer.py before generating PPT.",
+            1.0, 1.7, 11.2, 1.2,
+            fill=COLOR_WHITE,
+            border=COLOR_GRAY,
+            title_color=COLOR_DARK,
+            body_size=14,
+        )
+        return slide
+
+    # 每页 10 个，左右各 5 个，卡片更高更清楚
+    left_items = glossary_items[:5]
+    right_items = glossary_items[5:10]
+
+    def add_glossary_card(item, x, y):
+        marker = item.get("marker", "")
+        term = truncate(item.get("term", ""), 28)
+        explanation = truncate(item.get("explanation", ""), 90)
+        first_slide = item.get("first_slide_no", "?")
+
+        shape = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            Inches(x),
+            Inches(y),
+            Inches(5.55),
+            Inches(0.92),
+        )
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = COLOR_WHITE
+        shape.line.color.rgb = RGBColor(203, 213, 225)
+        shape.line.width = Pt(1)
+
+        tf = shape.text_frame
+        tf.clear()
+        tf.word_wrap = True
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        tf.margin_left = Inches(0.16)
+        tf.margin_right = Inches(0.16)
+        tf.margin_top = Inches(0.08)
+        tf.margin_bottom = Inches(0.06)
+
+        p = tf.paragraphs[0]
+        r = p.add_run()
+        r.text = f"{marker}  {term}"
+        set_run_font(r, size=13.5, bold=True, color=COLOR_BLUE)
+
+        p2 = tf.add_paragraph()
+        p2.space_before = Pt(2)
+        r2 = p2.add_run()
+        r2.text = explanation
+        set_run_font(r2, size=9.6, color=COLOR_TEXT)
+
+        p3 = tf.add_paragraph()
+        p3.space_before = Pt(1)
+        r3 = p3.add_run()
+        r3.text = f"First appears: Slide {first_slide}"
+        set_run_font(r3, size=8.4, color=COLOR_MUTED)
+
+    y0 = 1.35
+    gap = 1.02
+
+    for i, item in enumerate(left_items):
+        add_glossary_card(item, 0.75, y0 + i * gap)
+
+    for i, item in enumerate(right_items):
+        add_glossary_card(item, 6.95, y0 + i * gap)
+
+    # 底部只放一行很轻的说明，不再用大卡片
+    box = slide.shapes.add_textbox(
+        Inches(0.9),
+        Inches(6.72),
+        Inches(11.5),
+        Inches(0.25),
+    )
+    tf = box.text_frame
+    tf.clear()
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    r = p.add_run()
+    r.text = "Use the numbered markers in previous slides to look up explanations here."
+    set_run_font(r, size=8.5, color=COLOR_MUTED)
+
+    return slide
+
+
+def create_glossary_slides(prs, glossary):
+    if not glossary:
+        create_glossary_slide(prs, [], 1, 1)
+        return
+
+    chunks = list(chunk_items(glossary, 10))
+    total = len(chunks)
+
+    for i, items in enumerate(chunks, start=1):
+        create_glossary_slide(prs, items, i, total)
 
 
 def create_ppt(
@@ -635,6 +897,9 @@ def create_ppt(
         s = get_slide_by_no(slides, no)
         if s:
             create_general_slide(prs, s)
+
+    # Glossary slides: explain all technical terms
+    create_glossary_slides(prs, grounded.get("global_glossary", []))
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     prs.save(output_path)
