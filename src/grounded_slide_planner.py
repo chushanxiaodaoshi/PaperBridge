@@ -204,7 +204,7 @@ class GroundedSlidePlannerAgent:
 10. 自测题
 """
 
-        print("正在调用 Qwen 生成 grounded slide plan...")
+        print("正在调用大模型生成 grounded slide plan...")
         response = self.llm.ask(
             prompt=user_prompt,
             system_prompt=system_prompt

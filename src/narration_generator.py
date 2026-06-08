@@ -115,7 +115,7 @@ PPT 页面内容和证据：
 }}
 """
 
-    print("正在调用 Qwen 生成非念稿式中文讲解稿...")
+    print("正在调用大模型生成非念稿式中文讲解稿...")
     response = llm.ask(prompt=user_prompt, system_prompt=system_prompt)
     data = extract_json_from_text(response)
 

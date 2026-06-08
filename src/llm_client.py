@@ -11,22 +11,25 @@ load_dotenv(dotenv_path=".env")
 
 class LLMClient:
     def __init__(self):
-        self.api_key = os.getenv("DASHSCOPE_API_KEY")
-        self.model = os.getenv("QWEN_MODEL", "qwen-plus")
+        self.api_key = os.getenv("LLM_API_KEY")
+        self.model = os.getenv("LLM_MODEL", "qwen-plus")
         self.base_url = os.getenv(
-            "QWEN_BASE_URL",
+            "LLM_BASE_URL",
             "https://dashscope.aliyuncs.com/compatible-mode/v1"
         )
 
         if not self.api_key:
-            raise RuntimeError("没有读取到 DASHSCOPE_API_KEY，请检查 .env 文件。")
+            raise RuntimeError(
+                "没有读取到 LLM_API_KEY，请检查 .env 文件，"
+                "或在 Web 页面中输入 API Key。"
+            )
 
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url
         )
 
-    def _start_heartbeat(self, stop_event, label="Qwen 正在分析"):
+    def _start_heartbeat(self, stop_event, label="大模型正在分析"):
         def run():
             seconds = 0
             while not stop_event.wait(10):
@@ -45,7 +48,7 @@ class LLMClient:
     ):
         prompt_len = len(prompt)
         print(
-            f"[LLM] 开始请求 Qwen：model={self.model}，输入长度约 {prompt_len} 字符",
+            f"[LLM] 开始请求大模型：model={self.model}，base_url={self.base_url}，输入长度约 {prompt_len} 字符",
             flush=True
         )
 

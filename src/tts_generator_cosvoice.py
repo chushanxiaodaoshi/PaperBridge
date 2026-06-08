@@ -11,7 +11,7 @@ from dashscope.audio.tts_v2 import SpeechSynthesizer
 
 
 load_dotenv(dotenv_path=Path(".env"))
-dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
+dashscope.api_key = os.getenv("TTS_API_KEY")
 
 NARRATION_PATH = "outputs/narration.json"
 AUDIO_DIR = Path("outputs/audio")
@@ -66,7 +66,7 @@ def check_audio(path: Path):
 
 def synthesize_sentence(text, mp3_path: Path, max_retries=3):
     if not dashscope.api_key:
-        raise RuntimeError("没有读取到 DASHSCOPE_API_KEY，请检查 .env 文件。")
+        raise RuntimeError("没有读取到 TTS_API_KEY，请检查 .env 文件。")
 
     synthesizer = SpeechSynthesizer(
         model=TTS_MODEL,
