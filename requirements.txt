@@ -5,3 +5,4 @@ moviepy
 openai
 python-dotenv
 graphviz
+dashscope
