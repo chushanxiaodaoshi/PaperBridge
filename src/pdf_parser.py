@@ -2,6 +2,20 @@ import fitz  # PyMuPDF
 from pathlib import Path
 
 
+def clear_old_named_outputs():
+    try:
+        output_dir = Path("outputs")
+        for pattern in ["*_PaperBridge_Slides.pptx", "*_PaperBridge_Video.mp4"]:
+            for p in output_dir.glob(pattern):
+                p.unlink()
+        meta = output_dir / "project_meta.json"
+        if meta.exists():
+            meta.unlink()
+        print("已清理旧的命名输出文件。", flush=True)
+    except Exception as e:
+        print(f"清理旧命名文件失败，但不影响解析：{e}", flush=True)
+
+
 def extract_text_from_pdf(pdf_path: str, output_path: str) -> str:
     """
     从 PDF 中提取文字，并保存到 txt 文件。
@@ -32,6 +46,7 @@ def extract_text_from_pdf(pdf_path: str, output_path: str) -> str:
 
 
 if __name__ == "__main__":
+    clear_old_named_outputs()
     extract_text_from_pdf(
         pdf_path="input/paper.pdf",
         output_path="outputs/paper_text.txt"

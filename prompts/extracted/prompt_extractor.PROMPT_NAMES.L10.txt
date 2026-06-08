@@ -1,6 +1,0 @@
-{
-    "system_prompt",
-    "user_prompt",
-    "STYLE_RULES",
-    "prompt",
-}

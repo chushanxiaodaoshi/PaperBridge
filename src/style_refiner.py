@@ -3,6 +3,7 @@ from pathlib import Path
 
 from llm_client import LLMClient
 from agents import extract_json_from_text
+from prompt_manager import get_effective_prompt
 
 
 GROUNDED_PATH = "outputs/grounded_slides.json"
@@ -22,6 +23,8 @@ STYLE_RULES = """
 8. 不要改变 Pxx 证据编号。
 9. 不要编造论文没有的内容。
 """
+
+STYLE_RULES = get_effective_prompt("style_refiner.STYLE_RULES.1", STYLE_RULES)
 
 
 def load_json(path):

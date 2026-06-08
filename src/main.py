@@ -15,7 +15,7 @@ def main():
 
     agent = PaperUnderstandingAgent()
 
-    print("正在调用 Qwen 分析论文，请稍等...")
+    print("正在调用 Qwen 分析论文，请稍等，这一步通常需要 1 到 3 分钟...", flush=True)
     analysis = agent.analyze(
         paper_text=paper_text,
         learner_level=learner_level,

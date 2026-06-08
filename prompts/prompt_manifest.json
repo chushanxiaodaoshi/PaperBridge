@@ -1,170 +1,22 @@
 [
   {
-    "id": "agents.system_prompt.L47",
-    "file": "src/agents.py",
-    "variable": "system_prompt",
-    "line": 47,
-    "purpose": "论文整体理解：从 paper_text 中提取问题、贡献、方法、实验、初学者解释等结构化信息。",
-    "path": "prompts/extracted/agents.system_prompt.L47.txt"
-  },
-  {
-    "id": "agents.user_prompt.L54",
-    "file": "src/agents.py",
-    "variable": "user_prompt",
-    "line": 54,
-    "purpose": "论文整体理解：从 paper_text 中提取问题、贡献、方法、实验、初学者解释等结构化信息。",
-    "path": "prompts/extracted/agents.user_prompt.L54.txt"
-  },
-  {
-    "id": "grounded_slide_planner.system_prompt.L97",
-    "file": "src/grounded_slide_planner.py",
-    "variable": "system_prompt",
-    "line": 97,
-    "purpose": "PPT 规划：根据论文分析和证据索引生成带 evidence 的 PPT 页面结构。",
-    "path": "prompts/extracted/grounded_slide_planner.system_prompt.L97.txt"
-  },
-  {
-    "id": "grounded_slide_planner.user_prompt.L105",
-    "file": "src/grounded_slide_planner.py",
-    "variable": "user_prompt",
-    "line": 105,
-    "purpose": "PPT 规划：根据论文分析和证据索引生成带 evidence 的 PPT 页面结构。",
-    "path": "prompts/extracted/grounded_slide_planner.user_prompt.L105.txt"
-  },
-  {
-    "id": "lecture_narration_refiner.STYLE_RULES.L13",
+    "id": "lecture_narration_refiner.STYLE_RULES.1",
     "file": "src/lecture_narration_refiner.py",
     "variable": "STYLE_RULES",
-    "line": 13,
-    "purpose": "该 prompt 用于对应脚本中的 LLM 调用。",
-    "path": "prompts/extracted/lecture_narration_refiner.STYLE_RULES.L13.txt"
+    "line": 14,
+    "purpose": "讲解稿润色风格：控制中文讲解稿的口吻、节奏、专业程度和初学者友好程度。",
+    "default_path": "prompts/defaults/lecture_narration_refiner.STYLE_RULES.1.txt",
+    "custom_path": "prompts/custom/lecture_narration_refiner.STYLE_RULES.1.txt",
+    "has_custom": false
   },
   {
-    "id": "lecture_narration_refiner.system_prompt.L62",
-    "file": "src/lecture_narration_refiner.py",
-    "variable": "system_prompt",
-    "line": 62,
-    "purpose": "该 prompt 用于对应脚本中的 LLM 调用。",
-    "path": "prompts/extracted/lecture_narration_refiner.system_prompt.L62.txt"
-  },
-  {
-    "id": "lecture_narration_refiner.user_prompt.L69",
-    "file": "src/lecture_narration_refiner.py",
-    "variable": "user_prompt",
-    "line": 69,
-    "purpose": "该 prompt 用于对应脚本中的 LLM 调用。",
-    "path": "prompts/extracted/lecture_narration_refiner.user_prompt.L69.txt"
-  },
-  {
-    "id": "narration_generator.system_prompt.L60",
-    "file": "src/narration_generator.py",
-    "variable": "system_prompt",
-    "line": 60,
-    "purpose": "讲解稿生成：根据 PPT、论文证据和术语表生成非照读 PPT 的中文讲解稿。",
-    "path": "prompts/extracted/narration_generator.system_prompt.L60.txt"
-  },
-  {
-    "id": "narration_generator.user_prompt.L77",
-    "file": "src/narration_generator.py",
-    "variable": "user_prompt",
-    "line": 77,
-    "purpose": "讲解稿生成：根据 PPT、论文证据和术语表生成非照读 PPT 的中文讲解稿。",
-    "path": "prompts/extracted/narration_generator.user_prompt.L77.txt"
-  },
-  {
-    "id": "paragraph_indexer.system_prompt.L105",
-    "file": "src/paragraph_indexer.py",
-    "variable": "system_prompt",
-    "line": 105,
-    "purpose": "证据索引：把论文文本拆成带页码的段落块，并总结每段用途，供后续 PPT grounding 使用。",
-    "path": "prompts/extracted/paragraph_indexer.system_prompt.L105.txt"
-  },
-  {
-    "id": "paragraph_indexer.user_prompt.L119",
-    "file": "src/paragraph_indexer.py",
-    "variable": "user_prompt",
-    "line": 119,
-    "purpose": "证据索引：把论文文本拆成带页码的段落块，并总结每段用途，供后续 PPT grounding 使用。",
-    "path": "prompts/extracted/paragraph_indexer.user_prompt.L119.txt"
-  },
-  {
-    "id": "prompt_extractor.PROMPT_DIR.L7",
-    "file": "src/prompt_extractor.py",
-    "variable": "PROMPT_DIR",
-    "line": 7,
-    "purpose": "该 prompt 用于对应脚本中的 LLM 调用。",
-    "path": "prompts/extracted/prompt_extractor.PROMPT_DIR.L7.txt"
-  },
-  {
-    "id": "prompt_extractor.PROMPT_NAMES.L10",
-    "file": "src/prompt_extractor.py",
-    "variable": "PROMPT_NAMES",
-    "line": 10,
-    "purpose": "该 prompt 用于对应脚本中的 LLM 调用。",
-    "path": "prompts/extracted/prompt_extractor.PROMPT_NAMES.L10.txt"
-  },
-  {
-    "id": "prompt_extractor.prompt_id.L75",
-    "file": "src/prompt_extractor.py",
-    "variable": "prompt_id",
-    "line": 75,
-    "purpose": "该 prompt 用于对应脚本中的 LLM 调用。",
-    "path": "prompts/extracted/prompt_extractor.prompt_id.L75.txt"
-  },
-  {
-    "id": "style_refiner.STYLE_RULES.L13",
+    "id": "style_refiner.STYLE_RULES.1",
     "file": "src/style_refiner.py",
     "variable": "STYLE_RULES",
-    "line": 13,
-    "purpose": "文案风格优化：把 PPT 和讲解稿改得更清晰、准确、克制。",
-    "path": "prompts/extracted/style_refiner.STYLE_RULES.L13.txt"
-  },
-  {
-    "id": "style_refiner.system_prompt.L74",
-    "file": "src/style_refiner.py",
-    "variable": "system_prompt",
-    "line": 74,
-    "purpose": "文案风格优化：把 PPT 和讲解稿改得更清晰、准确、克制。",
-    "path": "prompts/extracted/style_refiner.system_prompt.L74.txt"
-  },
-  {
-    "id": "style_refiner.user_prompt.L82",
-    "file": "src/style_refiner.py",
-    "variable": "user_prompt",
-    "line": 82,
-    "purpose": "文案风格优化：把 PPT 和讲解稿改得更清晰、准确、克制。",
-    "path": "prompts/extracted/style_refiner.user_prompt.L82.txt"
-  },
-  {
-    "id": "style_refiner.system_prompt.L168",
-    "file": "src/style_refiner.py",
-    "variable": "system_prompt",
-    "line": 168,
-    "purpose": "文案风格优化：把 PPT 和讲解稿改得更清晰、准确、克制。",
-    "path": "prompts/extracted/style_refiner.system_prompt.L168.txt"
-  },
-  {
-    "id": "style_refiner.user_prompt.L176",
-    "file": "src/style_refiner.py",
-    "variable": "user_prompt",
-    "line": 176,
-    "purpose": "文案风格优化：把 PPT 和讲解稿改得更清晰、准确、克制。",
-    "path": "prompts/extracted/style_refiner.user_prompt.L176.txt"
-  },
-  {
-    "id": "term_explainer.system_prompt.L66",
-    "file": "src/term_explainer.py",
-    "variable": "system_prompt",
-    "line": 66,
-    "purpose": "术语注释：提取 PPT 中出现的专业术语，并生成统一解释。",
-    "path": "prompts/extracted/term_explainer.system_prompt.L66.txt"
-  },
-  {
-    "id": "term_explainer.user_prompt.L73",
-    "file": "src/term_explainer.py",
-    "variable": "user_prompt",
-    "line": 73,
-    "purpose": "术语注释：提取 PPT 中出现的专业术语，并生成统一解释。",
-    "path": "prompts/extracted/term_explainer.user_prompt.L73.txt"
+    "line": 14,
+    "purpose": "PPT 文案风格：控制 PPT 页面文字是否简洁、克制、准确，避免幼稚比喻和过度口语化。",
+    "default_path": "prompts/defaults/style_refiner.STYLE_RULES.1.txt",
+    "custom_path": "prompts/custom/style_refiner.STYLE_RULES.1.txt",
+    "has_custom": false
   }
 ]

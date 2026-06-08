@@ -1,5 +1,7 @@
 import json
+import re
 from pathlib import Path
+from project_namer import get_named_slides_path
 
 from pptx import Presentation
 from pptx.util import Inches, Pt
@@ -31,6 +33,8 @@ COLOR_PURPLE = RGBColor(126, 34, 206)
 COLOR_LIGHT_PURPLE = RGBColor(243, 232, 255)
 COLOR_GRAY = RGBColor(226, 232, 240)
 COLOR_WHITE = RGBColor(255, 255, 255)
+
+EVIDENCE_LINK_SHAPES = []
 
 
 def truncate(text, max_len):
@@ -211,6 +215,7 @@ def add_evidence_box(slide, evidence, x, y, w, h, max_items=4):
     tf.margin_bottom = Inches(0.08)
 
     p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
     r = p.add_run()
     r.text = "Evidence from the paper"
     set_run_font(r, size=12.5, bold=True, color=COLOR_BLUE)
@@ -222,15 +227,15 @@ def add_evidence_box(slide, evidence, x, y, w, h, max_items=4):
         set_run_font(r, size=10.5, color=COLOR_MUTED)
         return shape
 
-    # 小高度的 evidence box 用紧凑显示，避免思维导图/流程图底部文字溢出
     compact_mode = h < 1.3
+    show_count = min(max_items, 1 if compact_mode else 3, len(evidence))
 
-    if compact_mode:
-        show_count = min(max_items, 1, len(evidence))
-    else:
-        show_count = min(max_items, 3, len(evidence))
+    header_h = 0.34
+    top_pad = 0.12
+    item_gap = 0.07
+    item_h = max(0.32, (h - header_h - top_pad - item_gap * (show_count - 1) - 0.12) / show_count)
 
-    for ev in evidence[:show_count]:
+    for idx, ev in enumerate(evidence[:show_count]):
         pid = ev.get("paragraph_id", "?")
         section = ev.get("section_guess", "Other")
         page_start = ev.get("page_start", "?")
@@ -241,23 +246,47 @@ def add_evidence_box(slide, evidence, x, y, w, h, max_items=4):
         else:
             loc = f"Page {page_start}-{page_end}"
 
-        excerpt = truncate(ev.get("source_excerpt", ""), 78 if not compact_mode else 95)
-        summary = truncate(ev.get("summary_sentence", ""), 88 if not compact_mode else 70)
+        excerpt = truncate(ev.get("source_excerpt", ""), 80 if not compact_mode else 95)
+        summary = truncate(ev.get("summary_sentence", ""), 80 if not compact_mode else 60)
 
-        p = tf.add_paragraph()
-        p.space_before = Pt(4)
+        item_y = y + header_h + top_pad + idx * (item_h + item_gap)
+
+        item_shape = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            Inches(x + 0.14),
+            Inches(item_y),
+            Inches(w - 0.28),
+            Inches(item_h),
+        )
+        item_shape.fill.solid()
+        item_shape.fill.fore_color.rgb = COLOR_WHITE
+        item_shape.line.color.rgb = RGBColor(191, 219, 254)
+        item_shape.line.width = Pt(0.8)
+
+        item_tf = item_shape.text_frame
+        item_tf.clear()
+        item_tf.word_wrap = True
+        item_tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        item_tf.margin_left = Inches(0.08)
+        item_tf.margin_right = Inches(0.08)
+        item_tf.margin_top = Inches(0.04)
+        item_tf.margin_bottom = Inches(0.04)
+
+        p = item_tf.paragraphs[0]
         r = p.add_run()
 
         if compact_mode:
-            r.text = f"[P{pid} | {loc} | {section}] Original: {excerpt}"
-            set_run_font(r, size=7.8, color=COLOR_TEXT)
+            r.text = f"[P{pid} | {loc}] {excerpt}"
+            set_run_font(r, size=7.2, color=COLOR_TEXT)
         else:
-            r.text = (
-                f"[P{pid} | {loc} | {section}]\n"
-                f"Original: {excerpt}\n"
-                f"Summary: {summary}"
-            )
-            set_run_font(r, size=8.6, color=COLOR_TEXT)
+            r.text = f"[P{pid} | {loc} | {section}]\nOriginal: {excerpt}\nSummary: {summary}"
+            set_run_font(r, size=7.9, color=COLOR_TEXT)
+
+        try:
+            clean_pid = int(str(pid).replace("P", "").strip())
+            EVIDENCE_LINK_SHAPES.append((item_shape, clean_pid))
+        except Exception:
+            pass
 
     if len(evidence) > show_count and not compact_mode:
         p = tf.add_paragraph()
@@ -267,7 +296,6 @@ def add_evidence_box(slide, evidence, x, y, w, h, max_items=4):
         set_run_font(r, size=8.2, color=COLOR_MUTED)
 
     return shape
-
 
 
 def add_terms_box(slide, terms, x, y, w, h):
@@ -532,20 +560,24 @@ def add_mindmap_evidence_footer(slide, evidence):
 # ---------- 特殊页面：方法流程图 ----------
 
 def draw_method_flow(slide, method_flow):
-    steps = method_flow[:5]
+    steps = method_flow[:4]
     if not steps:
         add_card(slide, "No method flow found", "The planner did not provide method steps.", 1, 2, 11, 2)
         return
 
-    y = 2.15
-    box_w = 2.15
-    gap = 0.32
-    start_x = 0.55
+    y = 2.05
+    box_w = 2.72
+    box_h = 1.72
+    gap = 0.18
+
+    total_w = len(steps) * box_w + (len(steps) - 1) * gap
+    start_x = (SLIDE_W - total_w) / 2
 
     for i, step in enumerate(steps):
         x = start_x + i * (box_w + gap)
-        title = f"Step {step.get('step_no', i+1)}: {truncate(step.get('name', ''), 28)}"
-        desc = truncate(step.get("description", ""), 95)
+
+        title = f"Step {step.get('step_no', i+1)}: {truncate(step.get('name', ''), 18)}"
+        desc = truncate(step.get("description", ""), 72)
 
         add_card(
             slide,
@@ -554,22 +586,35 @@ def draw_method_flow(slide, method_flow):
             x,
             y,
             box_w,
-            1.45,
+            box_h,
             fill=COLOR_WHITE,
             border=COLOR_BLUE,
             title_color=COLOR_BLUE,
-            body_size=11,
+            body_size=10.5,
         )
 
         if i < len(steps) - 1:
-            add_connector(slide, x + box_w, y + 0.72, x + box_w + gap, y + 0.72, COLOR_BLUE)
-            arrow = slide.shapes.add_textbox(Inches(x + box_w + 0.05), Inches(y + 0.48), Inches(0.25), Inches(0.3))
+            add_connector(
+                slide,
+                x + box_w,
+                y + box_h / 2,
+                x + box_w + gap,
+                y + box_h / 2,
+                COLOR_BLUE
+            )
+
+            arrow = slide.shapes.add_textbox(
+                Inches(x + box_w + 0.03),
+                Inches(y + box_h / 2 - 0.16),
+                Inches(0.20),
+                Inches(0.25),
+            )
             tf = arrow.text_frame
             tf.clear()
             p = tf.paragraphs[0]
             r = p.add_run()
             r.text = "→"
-            set_run_font(r, size=18, bold=True, color=COLOR_BLUE)
+            set_run_font(r, size=16, bold=True, color=COLOR_BLUE)
 
 
 def normalize_pid(x):
@@ -682,7 +727,7 @@ def create_general_slide(prs, slide_data):
     evidence = slide_data.get("verified_evidence", [])
     visual_type = slide_data.get("visual_type", "")
 
-    add_label(slide, f"Visual Type: {visual_type}", 0.65, 1.28, 2.1, 0.32, COLOR_GREEN)
+    add_label(slide, f"Visual type: {visual_type}", 0.65, 1.28, 3.5, 0.42, COLOR_GREEN)
 
     # 左侧：主要观点，拉高
     add_bullet_box(
@@ -863,10 +908,239 @@ def create_glossary_slides(prs, glossary):
         create_glossary_slide(prs, items, i, total)
 
 
-def create_ppt(
-    grounded_path: str = GROUNDED_PATH,
-    output_path: str = OUTPUT_PPT,
-):
+
+
+
+def parse_pid_value(value):
+    m = re.search(r"\d+", str(value))
+    return int(m.group(0)) if m else None
+
+
+def load_paragraph_index():
+    path = Path("outputs/paragraph_index.json")
+    if not path.exists():
+        return {}
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    lookup = {}
+    for p in data.get("paragraphs", []):
+        pid = parse_pid_value(p.get("paragraph_id"))
+        if pid is not None:
+            lookup[pid] = p
+
+    return lookup
+
+
+def collect_used_evidence(grounded):
+    paragraph_lookup = load_paragraph_index()
+    used = {}
+
+    for slide in grounded.get("slides", []):
+        for ev in slide.get("verified_evidence", []):
+            pid = parse_pid_value(ev.get("paragraph_id"))
+            if pid is None:
+                continue
+
+            merged = dict(paragraph_lookup.get(pid, {}))
+            merged.update(ev)
+            used[pid] = merged
+
+    return used
+
+
+def add_appendix_text_box(slide, title, body, x, y, w, h, title_color=COLOR_BLUE):
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE,
+        Inches(x),
+        Inches(y),
+        Inches(w),
+        Inches(h),
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = COLOR_WHITE
+    shape.line.color.rgb = COLOR_GRAY
+    shape.line.width = Pt(1)
+
+    tf = shape.text_frame
+    tf.clear()
+    tf.word_wrap = True
+    tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+    tf.margin_left = Inches(0.18)
+    tf.margin_right = Inches(0.18)
+    tf.margin_top = Inches(0.12)
+    tf.margin_bottom = Inches(0.12)
+
+    p = tf.paragraphs[0]
+    r = p.add_run()
+    r.text = title
+    set_run_font(r, size=15, bold=True, color=title_color)
+
+    p2 = tf.add_paragraph()
+    p2.space_before = Pt(6)
+    r2 = p2.add_run()
+    r2.text = body
+    set_run_font(r2, size=11.5, color=COLOR_TEXT)
+
+    return shape
+
+
+
+def add_back_to_previous_button(slide, x=10.1, y=6.32, w=2.1, h=0.42):
+    """
+    在 Evidence Appendix 页添加“返回上一页”按钮。
+    PowerPoint 放映模式下会跳回刚才点击 evidence 的页面。
+    """
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE,
+        Inches(x),
+        Inches(y),
+        Inches(w),
+        Inches(h),
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = COLOR_BLUE
+    shape.line.fill.background()
+
+    set_shape_text(
+        shape,
+        "Back to previous slide",
+        font_size=10.5,
+        bold=True,
+        color=COLOR_WHITE,
+        align=PP_ALIGN.CENTER,
+    )
+
+    # 关键：PowerPoint 内置动作，返回上一个浏览过的 slide
+    cNvPr = shape._element.nvSpPr.cNvPr
+
+    # 避免重复添加 hlinkClick
+    for child in list(cNvPr):
+        if child.tag.endswith("hlinkClick"):
+            cNvPr.remove(child)
+
+    from pptx.oxml import parse_xml
+    hlink = parse_xml(
+        '<a:hlinkClick xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'action="ppaction://hlinkshowjump?jump=lastslideviewed"/>'
+    )
+    cNvPr.append(hlink)
+
+    return shape
+
+
+def create_evidence_appendix_slides(prs, grounded):
+    used = collect_used_evidence(grounded)
+
+    if not used:
+        return {}
+
+    appendix_map = {}
+
+    for idx, pid in enumerate(sorted(used.keys()), start=1):
+        ev = used[pid]
+
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        add_bg(slide)
+
+        page_start = ev.get("page_start", "?")
+        page_end = ev.get("page_end", page_start)
+        section = ev.get("section_guess", "Other")
+
+        if page_start == page_end:
+            page_info = f"Page {page_start}"
+        else:
+            page_info = f"Page {page_start}-{page_end}"
+
+        add_title(
+            slide,
+            f"Evidence Appendix · P{pid}",
+            f"{page_info} · {section} · click evidence items to jump here"
+        )
+
+        source = ev.get("original_text") or ev.get("source_excerpt", "")
+        source = truncate(source, 1050)
+
+        summary = ev.get("summary_sentence", "")
+        keywords = ev.get("keywords", [])
+        difficulty = ev.get("difficulty_for_beginner", "")
+
+        add_appendix_text_box(
+            slide,
+            "Original paragraph excerpt",
+            source,
+            0.8,
+            1.45,
+            11.8,
+            2.55,
+            title_color=COLOR_DARK,
+        )
+
+        extra = f"Summary: {summary}\n"
+        if keywords:
+            extra += "Keywords: " + ", ".join(str(k) for k in keywords[:8]) + "\n"
+        if difficulty:
+            extra += f"Beginner difficulty: {difficulty}"
+
+        add_appendix_text_box(
+            slide,
+            "Beginner-friendly note",
+            extra,
+            0.8,
+            4.25,
+            11.8,
+            1.55,
+            title_color=COLOR_BLUE,
+        )
+
+        add_card(
+            slide,
+            "Navigation",
+            "Click the button on the right or press Alt+Left to return to the source slide.",
+            1.1,
+            6.25,
+            8.6,
+            0.48,
+            fill=COLOR_LIGHT_BLUE,
+            border=COLOR_BLUE,
+            title_color=COLOR_BLUE,
+            body_size=10.5,
+        )
+
+        add_back_to_previous_button(slide)
+
+        appendix_map[pid] = slide
+
+    return appendix_map
+
+
+def apply_evidence_hyperlinks(appendix_map):
+    linked = 0
+
+    for shape, pid in EVIDENCE_LINK_SHAPES:
+        target_slide = appendix_map.get(pid)
+        if not target_slide:
+            continue
+
+        try:
+            shape.click_action.target_slide = target_slide
+            linked += 1
+        except Exception:
+            pass
+
+    print(f"已添加 evidence 内部跳转链接：{linked} 个", flush=True)
+
+
+def create_ppt(grounded_path: str = GROUNDED_PATH, output_path=None):
+    global EVIDENCE_LINK_SHAPES
+    EVIDENCE_LINK_SHAPES = []
+
+    if output_path is None:
+        output_path = str(get_named_slides_path())
+
     grounded = json.loads(Path(grounded_path).read_text(encoding="utf-8"))
 
     prs = Presentation()
@@ -901,9 +1175,13 @@ def create_ppt(
     # Glossary slides: explain all technical terms
     create_glossary_slides(prs, grounded.get("global_glossary", []))
 
+    # Evidence Appendix slides and internal hyperlinks
+    appendix_map = create_evidence_appendix_slides(prs, grounded)
+    apply_evidence_hyperlinks(appendix_map)
+
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     prs.save(output_path)
-    print(f"Grounded PPT 已生成：{output_path}")
+    print(f"PPT 已生成：{output_path}")
 
 
 if __name__ == "__main__":

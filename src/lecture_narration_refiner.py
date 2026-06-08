@@ -3,6 +3,7 @@ from pathlib import Path
 
 from llm_client import LLMClient
 from agents import extract_json_from_text
+from prompt_manager import get_effective_prompt
 
 
 NARRATION_PATH = "outputs/narration.json"
@@ -28,6 +29,8 @@ STYLE_RULES = """
 12. 内容要比 PPT 更丰富，但不能跑题。
 13. 不要编造论文没有的信息。
 """
+
+STYLE_RULES = get_effective_prompt("lecture_narration_refiner.STYLE_RULES.1", STYLE_RULES)
 
 
 def load_json(path):
