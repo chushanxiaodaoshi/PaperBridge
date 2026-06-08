@@ -41,6 +41,42 @@ def compact_slide_for_narration(slide):
     }
 
 
+
+def apply_fixed_opening_and_closing(data: dict, analysis: dict) -> dict:
+    """
+    固定加入视频口播开场和第 10 页自测题结尾。
+    这里不用交给 LLM 自由发挥，避免每次生成不稳定。
+    """
+    title = (
+        analysis.get("paper_title")
+        or analysis.get("title")
+        or "这篇论文"
+    )
+
+    opening = f"大家好，今天我们来介绍的是《{title}》。"
+    closing = "大家做完可以自己下课，PPT 后面还有一些专业名词解释和论文原文段落，我先下班了，谢谢大家。"
+
+    slides = data.get("slides", [])
+
+    for slide in slides:
+        try:
+            slide_no = int(slide.get("slide_no"))
+        except Exception:
+            continue
+
+        narration = str(slide.get("narration", "")).strip()
+
+        if slide_no == 1 and "大家好，今天我们来介绍的是" not in narration:
+            slide["narration"] = opening + narration
+
+        if slide_no == 10 and "我先下班了，谢谢大家" not in narration:
+            if narration and not narration.endswith(("。", "！", "？")):
+                narration += "。"
+            slide["narration"] = narration + closing
+
+    return data
+
+
 def generate_narration(
     analysis_path: str = "outputs/paper_analysis.json",
     grounded_path: str = "outputs/grounded_slides.json",
@@ -118,6 +154,7 @@ PPT 页面内容和证据：
     print("正在调用大模型生成非念稿式中文讲解稿...")
     response = llm.ask(prompt=user_prompt, system_prompt=system_prompt)
     data = extract_json_from_text(response)
+    data = apply_fixed_opening_and_closing(data, analysis)
 
     save_json(data, output_json_path)
 

@@ -191,7 +191,7 @@ def clean_subtitle_text(text):
     return text
 
 
-def split_subtitle_units(text, max_len=24):
+def split_subtitle_units(text, max_len=30):
     text = clean_subtitle_text(text)
 
     if not text:
@@ -232,7 +232,7 @@ def split_subtitle_units(text, max_len=24):
     return merged
 
 
-def wrap_subtitle_line(text, line_len=16):
+def wrap_subtitle_line(text, line_len=24):
     text = clean_subtitle_text(text)
 
     if len(text) <= line_len:
@@ -314,14 +314,14 @@ def burn_subtitles(input_video, srt_path, output_video):
     subtitle_filter = (
         f"subtitles='{srt_path}':"
         "force_style='FontName=Noto Sans CJK SC,"
-        "FontSize=24,"
+        "FontSize=15,"
         "PrimaryColour=&H00FFFFFF,"
         "OutlineColour=&H00000000,"
         "BorderStyle=1,"
-        "Outline=2,"
+        "Outline=1,"
         "Shadow=0,"
         "Alignment=2,"
-        "MarginV=46'"
+        "MarginV=16'"
     )
 
     run([
@@ -358,31 +358,44 @@ def create_video(image_paths):
     for old in SEGMENT_DIR.glob("segment_*.mp4"):
         old.unlink()
 
+    for old in SEGMENT_DIR.glob("silent_*.wav"):
+        old.unlink()
+
     segment_paths = []
     slide_durations = []
-    total = len(image_paths)
 
+    # 只保留有音频的 PPT 页面。
+    # glossary / evidence appendix 等没有 slide_xx.wav 的页面不会进入视频。
+    playable_items = []
     for i, image_path in enumerate(image_paths, start=1):
         audio_path = get_audio_path(i)
-
         if audio_path is None:
-            audio_path = SEGMENT_DIR / f"silent_{i:02d}.wav"
-            make_silent_audio(audio_path, DEFAULT_SILENT_DURATION)
-            log(f"第 {i} 页没有对应音频，使用 {DEFAULT_SILENT_DURATION} 秒静音。")
+            log(f"第 {i} 页没有对应音频，跳过，不进入视频。")
+            continue
+        playable_items.append((i, image_path, audio_path))
 
+    if not playable_items:
+        raise RuntimeError(
+            "没有找到任何可用于视频的音频文件。"
+            "请先运行 python src/tts_generator.py 生成 outputs/audio/slide_xx.wav。"
+        )
+
+    total = len(playable_items)
+
+    for idx, (slide_no, image_path, audio_path) in enumerate(playable_items, start=1):
         duration = get_duration(audio_path)
-        slide_durations.append((i, duration))
+        slide_durations.append((slide_no, duration))
 
-        segment_path = SEGMENT_DIR / f"segment_{i:02d}.mp4"
+        segment_path = SEGMENT_DIR / f"segment_{slide_no:02d}.mp4"
 
-        p = 40 + 42 * (i - 1) / max(total, 1)
-        progress(p, f"正在生成第 {i}/{total} 页视频片段")
+        p = 40 + 42 * (idx - 1) / max(total, 1)
+        progress(p, f"正在生成第 {idx}/{total} 个视频片段，对应 PPT 第 {slide_no} 页")
 
         make_segment(image_path, audio_path, segment_path)
         segment_paths.append(segment_path)
 
-        p = 40 + 42 * i / max(total, 1)
-        progress(p, f"第 {i}/{total} 页视频片段完成")
+        p = 40 + 42 * idx / max(total, 1)
+        progress(p, f"第 {idx}/{total} 个视频片段完成")
 
     progress(86, "正在拼接所有视频片段")
     concat_segments(segment_paths, RAW_VIDEO)
@@ -392,9 +405,6 @@ def create_video(image_paths):
 
     progress(100, "视频生成完成")
     log(f"视频已生成：{OUTPUT_VIDEO}")
-
-
-
 
 def main():
     ensure_dirs()

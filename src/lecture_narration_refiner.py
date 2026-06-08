@@ -57,6 +57,42 @@ def save_md(data, path):
     print(f"已保存：{path}")
 
 
+
+def apply_fixed_opening_and_closing(data: dict) -> dict:
+    slides = data.get("slides", [])
+
+    first_title = ""
+    for slide in slides:
+        try:
+            if int(slide.get("slide_no")) == 1:
+                first_title = str(slide.get("title", "")).strip()
+                break
+        except Exception:
+            pass
+
+    title = first_title or "这篇论文"
+    opening = f"大家好，今天我们来介绍的是《{title}》。"
+    closing = "大家做完可以自己下课，PPT 后面还有一些专业名词解释和论文原文段落，我先下班了，谢谢大家。"
+
+    for slide in slides:
+        try:
+            slide_no = int(slide.get("slide_no"))
+        except Exception:
+            continue
+
+        narration = str(slide.get("narration", "")).strip()
+
+        if slide_no == 1 and "大家好，今天我们来介绍的是" not in narration:
+            slide["narration"] = opening + narration
+
+        if slide_no == 10 and "我先下班了，谢谢大家" not in narration:
+            if narration and not narration.endswith(("。", "！", "？")):
+                narration += "。"
+            slide["narration"] = narration + closing
+
+    return data
+
+
 def main():
     data = load_json(NARRATION_PATH)
 
@@ -91,6 +127,7 @@ def main():
     print("正在重写讲解稿为课堂口播风格...")
     response = llm.ask(prompt=user_prompt, system_prompt=system_prompt)
     refined = extract_json_from_text(response)
+    refined = apply_fixed_opening_and_closing(refined)
 
     backup_path = Path(NARRATION_PATH).with_suffix(".json.bak")
     backup_path.write_text(
