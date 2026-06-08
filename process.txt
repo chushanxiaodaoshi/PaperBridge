@@ -1,34 +1,104 @@
+用户打开 Web 页面
+ ↓
+填写 DashScope API Key
+ ↓
+上传论文 PDF
+ ↓
+选择音色、选择执行步骤
+ ↓
+
 PDF
  ↓
 pdf_parser.py
-提取论文文本
+提取论文文本，生成 paper_text.txt
  ↓
-agents.py
+
+main.py / agents.py
 问 Qwen：整篇论文讲了什么？
+输出论文结构化分析
  ↓
 paper_analysis.json
  ↓
+
 paragraph_indexer.py
-问 Qwen：每个 evidence block 是什么意思？
+问 Qwen：把论文拆成 paragraph-level evidence blocks
+为每个 evidence block 生成页码、段落编号、摘要、关键词
  ↓
 paragraph_index.json
  ↓
+
 grounded_slide_planner.py
-问 Qwen：根据段落证据生成 10 页 PPT 规划
+问 Qwen：根据论文分析和段落证据规划 10 页 Grounded PPT
+生成每页标题、要点、visual type、verified evidence、mind map、method flow
  ↓
 grounded_slides.json
  ↓
+
 fix_grounded_evidence.py
-补全 page、source_excerpt、summary
+修复和补全 evidence 信息
+补全 page、source_excerpt、summary、paragraph_id
  ↓
+grounded_slides.json 更新
+ ↓
+
+style_refiner.py
+根据可编辑风格 Prompt 优化 PPT 文案
+让页面文字更简洁、准确、克制、适合展示
+ ↓
+grounded_slides.json 更新
+ ↓
+
+term_explainer.py
+提取专业术语
+生成术语编号和解释
+把术语标记写回 PPT 内容
+ ↓
+grounded_slides.json 更新
+ ↓
+
 ppt_generator.py
-生成 PPT
+根据 grounded_slides.json 生成 PPT
+生成：
+- 标题页
+- 普通内容页
+- 学习地图
+- 方法流程图
+- 术语解释页
+- Evidence Appendix 页面
+并为 evidence 小卡片添加内部超链接
  ↓
+<PaperName>_PaperBridge_Slides.pptx
+ ↓
+
 narration_generator.py
-问 Qwen：给每页生成中文讲解稿
+问 Qwen：根据 PPT 结构、论文分析和 evidence 生成中文讲解稿
+注意：不是照读 PPT，而是补充解释逻辑
  ↓
+narration.json
+narration.md
+ ↓
+
+speech_style_refiner.py
+根据可编辑风格 Prompt 优化口播稿
+让句子更适合 TTS 朗读，更像课堂讲解
+ ↓
+narration.json 更新
+narration.md 更新
+ ↓
+
 tts_generator.py
-生成语音
+调用 Edge TTS
+为每页讲解稿生成语音
  ↓
+outputs/audio/slide_xx.wav
+ ↓
+
 video_generator.py
-合成视频
+读取命名 PPT
+PPT 转 PDF
+PDF 转图片
+图片 + 音频合成视频片段
+生成字幕
+合成完整带字幕讲解视频
+ ↓
+<PaperName>_PaperBridge_Video.mp4
