@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -288,6 +289,25 @@ def selected_steps_need_llm(selected_steps):
 
 
 
+
+def make_safe_input_pdf_path(original_name):
+    INPUT_DIR.mkdir(exist_ok=True)
+
+    stem = Path(original_name).stem
+    stem = re.sub(r"[^A-Za-z0-9_\-\u4e00-\u9fff]+", "_", stem)
+    stem = stem.strip("_") or "uploaded_paper"
+
+    candidate = INPUT_DIR / f"{stem}.pdf"
+    if not candidate.exists():
+        return candidate
+
+    index = 2
+    while True:
+        candidate = INPUT_DIR / f"{stem}_{index}.pdf"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
 def run_pipeline(
     pdf_file,
     api_key,
@@ -309,13 +329,32 @@ def run_pipeline(
             "只运行生成 PPT、生成音频、合成视频等非大模型步骤时，可以不填写 API Key。"
         )
 
+    current_input_pdf = None
+
     if pdf_file is not None:
-        target_pdf = INPUT_DIR / "paper.pdf"
+        # 新上传论文时，清除旧项目名缓存，避免沿用上一篇论文的 RLAC / PACE 等名称。
+        stale_meta = OUTPUT_DIR / "project_meta.json"
+        if stale_meta.exists():
+            try:
+                stale_meta.unlink()
+            except Exception as e:
+                log += f"清理旧项目命名信息失败：{e}\n"
+
+        target_pdf = make_safe_input_pdf_path(Path(pdf_file.name).name)
         shutil.copy(pdf_file.name, target_pdf)
+        current_input_pdf = target_pdf
+
         log += f"已复制 PDF 到：{target_pdf}\n"
+        log += "解析完成后会自动重命名为 项目名_paper.pdf，例如 RLAC_paper.pdf。\n"
+    else:
+        if "1. 解析 PDF" in (selected_steps or []):
+            log += "未上传新 PDF：将自动从 input 目录选择最新的 PDF 进行解析。\n"
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+
+    if current_input_pdf is not None:
+        env["PAPERBRIDGE_INPUT_PDF"] = str(current_input_pdf)
 
     # 关键：把网页里输入的 API 配置传给后续所有 Python 脚本
     if api_key:

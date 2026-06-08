@@ -1,6 +1,8 @@
 import fitz  # PyMuPDF
 from pathlib import Path
 
+from project_namer import discover_input_pdf, finalize_input_pdf_name, reset_project_meta
+
 
 def clear_old_named_outputs():
     try:
@@ -46,8 +48,17 @@ def extract_text_from_pdf(pdf_path: str, output_path: str) -> str:
 
 
 if __name__ == "__main__":
-    clear_old_named_outputs()
+    pdf_path = discover_input_pdf()
+    print(f"当前解析 PDF：{pdf_path}", flush=True)
+
+    # 每次解析 PDF 都认为是在处理一篇新论文，重新推断项目名。
+    reset_project_meta()
+
     extract_text_from_pdf(
-        pdf_path="input/paper.pdf",
+        pdf_path=str(pdf_path),
         output_path="outputs/paper_text.txt"
     )
+
+    named_pdf = finalize_input_pdf_name(pdf_path, remove_old=True, verbose=True)
+    if named_pdf:
+        print(f"输入 PDF 已重命名为：{named_pdf}", flush=True)

@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -6,6 +7,7 @@ from collections import Counter
 
 
 OUTPUT_DIR = Path("outputs")
+INPUT_DIR = Path("input")
 META_PATH = OUTPUT_DIR / "project_meta.json"
 
 BAD_ACRONYMS = {
@@ -171,6 +173,14 @@ def get_or_create_meta():
     if META_PATH.exists():
         meta = load_json(META_PATH)
         if meta and meta.get("project_slug"):
+            if not meta.get("pdf_filename"):
+                slug = safe_filename_part(meta["project_slug"])
+                meta["pdf_filename"] = f"{slug}_paper.pdf"
+                meta["input_pdf_path"] = str(INPUT_DIR / meta["pdf_filename"])
+                META_PATH.write_text(
+                    json.dumps(meta, ensure_ascii=False, indent=2),
+                    encoding="utf-8"
+                )
             return meta
 
     slug, title = infer_project_slug()
@@ -181,6 +191,8 @@ def get_or_create_meta():
         "paper_title": title,
         "slides_filename": f"{slug}_PaperBridge_Slides.pptx",
         "video_filename": f"{slug}_PaperBridge_Video.mp4",
+        "pdf_filename": f"{slug}_paper.pdf",
+        "input_pdf_path": str(INPUT_DIR / f"{slug}_paper.pdf"),
     }
 
     META_PATH.write_text(
@@ -287,6 +299,94 @@ def sync_named_outputs(verbose=True):
 
     return meta
 
+
+
+def reset_project_meta():
+    # 开始处理一篇新论文前调用，避免沿用上一篇论文的项目名。
+    if META_PATH.exists():
+        try:
+            META_PATH.unlink()
+        except Exception:
+            pass
+
+
+def discover_input_pdf():
+    # 优先使用 GUI 传入的 PAPERBRIDGE_INPUT_PDF；
+    # 否则从 input 目录下选择修改时间最新的 PDF。
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    env_path = os.getenv("PAPERBRIDGE_INPUT_PDF", "").strip()
+    if env_path:
+        p = Path(env_path)
+        if p.exists() and p.suffix.lower() == ".pdf":
+            return p
+
+    pdfs = [
+        p for p in INPUT_DIR.glob("*.pdf")
+        if p.is_file()
+    ]
+
+    if not pdfs:
+        raise FileNotFoundError(
+            "input 目录下没有找到 PDF。请在界面上传论文，"
+            "或手动放入一个 .pdf 文件。"
+        )
+
+    pdfs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return pdfs[0]
+
+
+def get_named_pdf_path():
+    meta = get_or_create_meta()
+    filename = meta.get("pdf_filename")
+    if not filename:
+        slug = safe_filename_part(meta.get("project_slug", "Paper"))
+        filename = f"{slug}_paper.pdf"
+    return INPUT_DIR / filename
+
+
+def finalize_input_pdf_name(src_pdf=None, remove_old=True, verbose=True):
+    # 解析完成、项目名推断出来后，把输入 PDF 改成：
+    # input/<项目名>_paper.pdf
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    src_pdf = Path(src_pdf) if src_pdf is not None else discover_input_pdf()
+    if not src_pdf.exists():
+        return None
+
+    meta = get_or_create_meta()
+    slug = safe_filename_part(meta.get("project_slug", "Paper"))
+    filename = f"{slug}_paper.pdf"
+    dst_pdf = INPUT_DIR / filename
+
+    if src_pdf.resolve() != dst_pdf.resolve():
+        shutil.copy2(src_pdf, dst_pdf)
+
+        if remove_old:
+            try:
+                if src_pdf.parent.resolve() == INPUT_DIR.resolve():
+                    src_pdf.unlink()
+            except Exception:
+                pass
+
+    meta["pdf_filename"] = filename
+    meta["input_pdf_path"] = str(dst_pdf)
+    meta["source_pdf_filename"] = src_pdf.name
+
+    META_PATH.write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
+    if verbose:
+        print(f"NAMED_PDF:{dst_pdf}", flush=True)
+
+    return dst_pdf
+
+
+# 兼容旧函数名。如果之前代码里还有 sync_named_pdf 调用，也会走新逻辑。
+def sync_named_pdf(src_pdf=None, verbose=True):
+    return finalize_input_pdf_name(src_pdf=src_pdf, remove_old=True, verbose=verbose)
 
 def main():
     sync_named_outputs(verbose=True)
