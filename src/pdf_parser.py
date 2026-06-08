@@ -1,5 +1,8 @@
 import fitz  # PyMuPDF
 from pathlib import Path
+import shutil
+
+from project_namer import discover_input_pdf, finalize_input_pdf_name, reset_project_meta
 
 
 def clear_old_named_outputs():
@@ -45,9 +48,41 @@ def extract_text_from_pdf(pdf_path: str, output_path: str) -> str:
     return full_text
 
 
+def copy_named_pdf_to_outputs(named_pdf: Path):
+    # 将重命名后的论文 PDF 复制到 outputs 目录。
+    # 最终 outputs 中会保留：
+    # - <项目名>_paper.pdf
+    # - <项目名>_PaperBridge_Slides.pptx
+    # - <项目名>_PaperBridge_Video.mp4
+    named_pdf = Path(named_pdf)
+    if not named_pdf.exists():
+        return None
+
+    output_dir = Path("outputs")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    dst_pdf = output_dir / named_pdf.name
+    if named_pdf.resolve() != dst_pdf.resolve():
+        shutil.copy2(named_pdf, dst_pdf)
+
+    return dst_pdf
+
 if __name__ == "__main__":
-    clear_old_named_outputs()
+    pdf_path = discover_input_pdf()
+    print(f"当前解析 PDF：{pdf_path}", flush=True)
+
+    # 每次解析 PDF 都认为是在处理一篇新论文，重新推断项目名。
+    reset_project_meta()
+
     extract_text_from_pdf(
-        pdf_path="input/paper.pdf",
+        pdf_path=str(pdf_path),
         output_path="outputs/paper_text.txt"
     )
+
+    named_pdf = finalize_input_pdf_name(pdf_path, remove_old=True, verbose=True)
+    if named_pdf:
+        print(f"输入 PDF 已重命名为：{named_pdf}", flush=True)
+
+        output_pdf = copy_named_pdf_to_outputs(named_pdf)
+        if output_pdf:
+            print(f"原论文 PDF 已复制到 outputs：{output_pdf}", flush=True)

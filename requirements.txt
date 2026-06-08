@@ -1,8 +1,21 @@
-pymupdf
-python-pptx
-edge-tts
-moviepy
-openai
-python-dotenv
-graphviz
-dashscope
+# PaperBridge Python dependencies
+# Python 3.10 is recommended.
+
+gradio>=5.0.0
+openai>=1.0.0
+python-dotenv>=1.0.0
+
+# PDF parsing / rendering
+pymupdf>=1.24.0
+
+# PPT generation
+python-pptx>=1.0.0
+
+# TTS
+edge-tts>=7.0.0
+
+# Desktop window for the packaged app
+pywebview>=5.0
+
+# Packaging
+pyinstaller>=6.0

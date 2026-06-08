@@ -1,73 +1,54 @@
-# =========================
-# Secrets / API keys
-# =========================
-.env
-.env.*
-!.env.example
-
-# =========================
-# Python cache
-# =========================
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+*.pyd
 
-# =========================
 # Virtual environments
-# =========================
 .venv/
 venv/
 env/
-paperbridge/
+ENV/
+*.env
+.env
+.env.*
 
-# =========================
-# Python tool caches
-# =========================
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.ipynb_checkpoints/
+# Build artifacts
+build/
+dist/
+*.spec
 
-# =========================
-# Generated outputs
-# =========================
-outputs/*
-!outputs/.gitkeep
+# Runtime input / output
+input/
+outputs/
 
-# =========================
-# Input papers / private data
-# =========================
-input/*
-!input/.gitkeep
+# External tools, too large for git
+tools/
 
-# =========================
-# Large generated media
-# =========================
-*.mp4
-*.mov
-*.avi
-*.mp3
-*.wav
-*.m4a
-
-# =========================
-# Generated slides / pdf exports
-# =========================
-*.pptx
-*.pdf
-
-# =========================
-# Logs / temp files
-# =========================
+# Logs and temporary files
 *.log
 *.tmp
 *.bak
-.~lock*
+*.swp
 
-# =========================
-# OS / editor files
-# =========================
+# OS / IDE
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# PyInstaller cache
+*.manifest
+
+# Generated media / documents accidentally placed in root
+*.mp4
+*.wav
+*.mp3
+*_PaperBridge_Slides.pptx
+*_PaperBridge_Video.mp4
+paperbridge_*.pptx
+paperbridge_*.mp4

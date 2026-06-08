@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import json
 import time
@@ -9,12 +10,21 @@ from pathlib import Path
 import edge_tts
 from dotenv import load_dotenv
 
+# Windows 控制台默认可能是 GBK，遇到 ∀、α、→ 等符号会 UnicodeEncodeError。
+# 这里把标准输出改成 UTF-8，并在极端情况下用 replace 兜底。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 load_dotenv(dotenv_path=Path(".env"))
 
 NARRATION_PATH = "outputs/narration.json"
 AUDIO_DIR = Path("outputs/audio")
 TMP_DIR = AUDIO_DIR / "_tmp"
+SUBTITLE_TIMING_PATH = AUDIO_DIR / "subtitle_timing.json"
 
 EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "zh-CN-YunyangNeural")
 EDGE_TTS_RATE = os.getenv("EDGE_TTS_RATE", "+6%")
@@ -26,6 +36,37 @@ SAMPLE_RATE = 48000
 
 def run(cmd):
     subprocess.run(cmd, check=True)
+
+
+
+def get_duration(path: Path):
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+    return float(result.stdout.strip())
+
+
+def subtitle_text_from_tts_text(text):
+    text = str(text).strip()
+    restore_map = {
+        "P M S M": "PMSM",
+        "C M A E S": "CMA-ES",
+        "P P O": "PPO",
+        "C O T": "CoT",
+    }
+    for k, v in restore_map.items():
+        text = text.replace(k, v)
+    return text
 
 
 def clean_text(text):
@@ -177,6 +218,8 @@ async def generate_slide_audio(slide_no, text, output_path: Path):
     slide_tmp.mkdir(parents=True, exist_ok=True)
 
     wav_parts = []
+    subtitle_segments = []
+    current_time = 0.0
 
     print(f"第 {slide_no} 页拆成 {len(sentences)} 段。")
 
@@ -189,26 +232,49 @@ async def generate_slide_audio(slide_no, text, output_path: Path):
 
         await synthesize_sentence(sent, sent_mp3)
         convert_to_wav(sent_mp3, sent_wav)
+
+        sent_duration = get_duration(sent_wav)
+        subtitle_segments.append({
+            "slide_no": int(slide_no),
+            "index": int(i),
+            "text": subtitle_text_from_tts_text(sent),
+            "start": round(current_time, 3),
+            "end": round(current_time + sent_duration, 3),
+            "duration": round(sent_duration, 3),
+        })
+
         wav_parts.append(sent_wav)
+        current_time += sent_duration
 
         if i != len(sentences):
-            duration = 0.24
+            silence_duration = 0.24
             if sent.endswith("？"):
-                duration = 0.36
+                silence_duration = 0.36
             elif sent.endswith("！"):
-                duration = 0.32
+                silence_duration = 0.32
             elif sent.endswith("；"):
-                duration = 0.18
+                silence_duration = 0.18
 
-            make_silence(silence_wav, duration)
+            make_silence(silence_wav, silence_duration)
             wav_parts.append(silence_wav)
+            current_time += silence_duration
 
     concat_wavs(wav_parts, output_path)
 
     if not check_audio(output_path):
         raise RuntimeError(f"最终音频无效：{output_path}")
 
+    # 由于 concat_wavs 会做一次轻微音频后处理，总时长可能有毫秒级误差。
+    # 这里把最后一个字幕段的结尾钳到最终音频时长内。
+    try:
+        final_duration = get_duration(output_path)
+        if subtitle_segments:
+            subtitle_segments[-1]["end"] = round(min(subtitle_segments[-1]["end"], final_duration), 3)
+    except Exception:
+        pass
+
     print(f"生成成功：{output_path}")
+    return subtitle_segments
 
 
 async def main_async():
@@ -226,6 +292,8 @@ async def main_async():
     if EDGE_TTS_PROXY:
         print(f"当前代理：{EDGE_TTS_PROXY}")
 
+    all_timing = []
+
     for slide in slides:
         slide_no = int(slide.get("slide_no"))
         text = slide.get("narration", "").strip()
@@ -233,8 +301,19 @@ async def main_async():
         output_path = AUDIO_DIR / f"slide_{slide_no:02d}.wav"
 
         print(f"\n正在生成第 {slide_no} 页音频：{output_path}")
-        await generate_slide_audio(slide_no, text, output_path)
+        segments = await generate_slide_audio(slide_no, text, output_path)
+        all_timing.append({
+            "slide_no": slide_no,
+            "audio": str(output_path),
+            "segments": segments,
+        })
 
+        SUBTITLE_TIMING_PATH.write_text(
+            json.dumps({"slides": all_timing}, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+
+    print(f"\n字幕时间轴已生成：{SUBTITLE_TIMING_PATH}")
     print("\n所有音频生成完成。")
 
 

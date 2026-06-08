@@ -1,104 +1,137 @@
-用户打开 Web 页面
- ↓
-填写 DashScope API Key
- ↓
-上传论文 PDF
- ↓
-选择音色、选择执行步骤
+PaperBridge 当前主流程
+
+输入：
+用户上传论文 PDF
+或手动把 PDF 放入 input/ 目录
+
  ↓
 
-PDF
- ↓
-pdf_parser.py
-提取论文文本，生成 paper_text.txt
+app.py
+Gradio / 桌面窗口入口
+负责：
+- 上传 PDF
+- 接收 API Key / Base URL / 模型名
+- 检查 ffmpeg / ffprobe / LibreOffice
+- 按用户勾选步骤调用各子脚本
+
  ↓
 
-main.py / agents.py
-问 Qwen：整篇论文讲了什么？
-输出论文结构化分析
- ↓
-paper_analysis.json
+1. pdf_parser.py
+读取刚上传的 PDF，或 input/ 中最新修改的 PDF
+提取全文
+输出：
+- outputs/paper_text.txt
+并将输入 PDF 重命名为：
+- input/<项目名>_paper.pdf
+
  ↓
 
-paragraph_indexer.py
-问 Qwen：把论文拆成 paragraph-level evidence blocks
-为每个 evidence block 生成页码、段落编号、摘要、关键词
- ↓
-paragraph_index.json
+2. main.py
+调用 OpenAI-compatible 大模型
+生成论文结构化分析
+输出：
+- outputs/paper_analysis.json
+
  ↓
 
-grounded_slide_planner.py
-问 Qwen：根据论文分析和段落证据规划 10 页 Grounded PPT
-生成每页标题、要点、visual type、verified evidence、mind map、method flow
- ↓
-grounded_slides.json
+3. paragraph_indexer.py
+根据论文文本构建段落级 evidence index
+输出：
+- outputs/paragraph_index.json
+
  ↓
 
-fix_grounded_evidence.py
-修复和补全 evidence 信息
-补全 page、source_excerpt、summary、paragraph_id
- ↓
-grounded_slides.json 更新
+4. grounded_slide_planner.py
+根据 paper_analysis + paragraph_index
+规划 grounded slides
+输出：
+- outputs/grounded_slides.json
+
  ↓
 
-style_refiner.py
-根据可编辑风格 Prompt 优化 PPT 文案
-让页面文字更简洁、准确、克制、适合展示
- ↓
-grounded_slides.json 更新
+5. fix_grounded_evidence.py
+修复 evidence 对齐
+补全 page、source_excerpt、summary 等信息
+更新：
+- outputs/grounded_slides.json
+
  ↓
 
-term_explainer.py
-提取专业术语
-生成术语编号和解释
-把术语标记写回 PPT 内容
- ↓
-grounded_slides.json 更新
+6. style_refiner.py
+优化 PPT 文案风格
+让每页表达更适合展示和讲解
+更新：
+- outputs/grounded_slides.json
+
  ↓
 
-ppt_generator.py
+7. term_explainer.py
+生成小白友好的术语解释
+输出术语解释相关文件
+供 PPT 附录页使用
+
+ ↓
+
+8. ppt_generator.py
 根据 grounded_slides.json 生成 PPT
-生成：
-- 标题页
-- 普通内容页
-- 学习地图
-- 方法流程图
-- 术语解释页
-- Evidence Appendix 页面
-并为 evidence 小卡片添加内部超链接
- ↓
-<PaperName>_PaperBridge_Slides.pptx
+输出：
+- outputs/<项目名>_PaperBridge_Slides.pptx
+
  ↓
 
-narration_generator.py
-问 Qwen：根据 PPT 结构、论文分析和 evidence 生成中文讲解稿
-注意：不是照读 PPT，而是补充解释逻辑
- ↓
-narration.json
-narration.md
+9. narration_generator.py
+根据每页 PPT 内容生成中文讲解稿
+输出：
+- outputs/narration.json
+- outputs/narration.md
+
  ↓
 
-speech_style_refiner.py
-根据可编辑风格 Prompt 优化口播稿
-让句子更适合 TTS 朗读，更像课堂讲解
- ↓
-narration.json 更新
-narration.md 更新
+10. lecture_narration_refiner.py
+优化口播稿
+让开场、衔接和结尾更适合课堂讲解
+更新：
+- outputs/narration.json
+- outputs/narration.md
+
  ↓
 
-tts_generator.py
-调用 Edge TTS
-为每页讲解稿生成语音
- ↓
-outputs/audio/slide_xx.wav
+11. tts_generator.py
+使用 Edge TTS 生成每页讲解音频
+依赖：
+- ffmpeg
+输出：
+- outputs/audio/slide_01.wav
+- outputs/audio/slide_02.wav
+- ...
+
  ↓
 
-video_generator.py
-读取命名 PPT
-PPT 转 PDF
-PDF 转图片
-图片 + 音频合成视频片段
-生成字幕
-合成完整带字幕讲解视频
- ↓
-<PaperName>_PaperBridge_Video.mp4
+12. video_generator.py
+合成讲解视频
+
+内部流程：
+PPTX
+ ↓ LibreOffice / soffice
+PDF
+ ↓ PyMuPDF / fitz
+slide_01.png、slide_02.png ...
+ ↓ ffmpeg
+视频片段
+ ↓ ffmpeg concat
+无字幕视频
+ ↓ 根据 narration.json 生成 SRT
+ ↓ ffmpeg 烧录字幕
+最终视频
+
+依赖：
+- ffmpeg
+- ffprobe
+- LibreOffice / soffice
+
+输出：
+- outputs/<项目名>_PaperBridge_Video.mp4
+
+最终用户可下载：
+- 命名后的 PPT
+- 命名后的讲解视频

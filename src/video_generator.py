@@ -1,6 +1,8 @@
 import json
+import os
 import re
 import subprocess
+import shutil
 from pathlib import Path
 from project_namer import get_named_slides_path, get_named_video_path
 
@@ -19,11 +21,45 @@ NARRATION_PATH = Path("outputs/narration.json")
 OUTPUT_VIDEO = str(get_named_video_path())
 RAW_VIDEO = str(Path(OUTPUT_VIDEO).with_name(Path(OUTPUT_VIDEO).stem + "_raw.mp4"))
 SRT_PATH = SUBTITLE_DIR / "paperbridge_subtitles.srt"
+SUBTITLE_TIMING_PATH = AUDIO_DIR / "subtitle_timing.json"
 
 FPS = 24
 WIDTH = 1920
 HEIGHT = 1080
 DEFAULT_SILENT_DURATION = 3.0
+
+def find_soffice():
+    """
+    查找 LibreOffice / soffice。
+
+    优先级：
+    1. app.py 打包运行时传入的 SOFFICE_PATH
+    2. 系统 PATH 中的 soffice / libreoffice
+    3. Windows 常见安装路径
+    """
+    env_path = os.getenv("SOFFICE_PATH", "").strip()
+    if env_path and Path(env_path).exists():
+        return env_path
+
+    for name in ["soffice", "libreoffice"]:
+        found = shutil.which(name)
+        if found:
+            return found
+
+    candidates = [
+        Path(r"C:\Program Files\LibreOffice\program\soffice.exe"),
+        Path(r"C:\Program Files (x86)\LibreOffice\program\soffice.exe"),
+    ]
+
+    for p in candidates:
+        if p.exists():
+            return str(p)
+
+    return "libreoffice"
+
+
+SOFFICE = find_soffice()
+
 
 
 def log(msg):
@@ -75,7 +111,7 @@ def convert_pptx_to_pdf():
         )
 
     run([
-        "libreoffice",
+        SOFFICE,
         "--headless",
         "--convert-to",
         "pdf",
@@ -232,7 +268,54 @@ def split_subtitle_units(text, max_len=30):
     return merged
 
 
-def wrap_subtitle_line(text, line_len=24):
+def split_subtitle_display_chunks(text, max_chars=44):
+    # 把一段较长字幕拆成多个显示块。
+    # 之前 wrap_subtitle_line 只保留前两行：return "\\n".join(lines[:2])
+    # 如果字幕超过两行，后面的字会被直接丢掉。
+    # 现在每条字幕最多约两行，超过长度就拆成多条字幕，不再丢字。
+    text = clean_subtitle_text(text)
+
+    if not text:
+        return []
+
+    parts = re.split(r"(?<=[。！？；，、])", text)
+    parts = [p.strip() for p in parts if p.strip()]
+
+    if not parts:
+        parts = [text]
+
+    chunks = []
+    buf = ""
+
+    for part in parts:
+        if len(part) > max_chars:
+            if buf:
+                chunks.append(buf)
+                buf = ""
+
+            for i in range(0, len(part), max_chars):
+                piece = part[i:i + max_chars].strip()
+                if piece:
+                    chunks.append(piece)
+
+            continue
+
+        if not buf:
+            buf = part
+        elif len(buf) + len(part) <= max_chars:
+            buf += part
+        else:
+            chunks.append(buf)
+            buf = part
+
+    if buf:
+        chunks.append(buf)
+
+    return chunks
+
+
+def wrap_subtitle_line(text, line_len=22):
+    # 只负责把一条字幕内部换行，不再截断字幕文本。
     text = clean_subtitle_text(text)
 
     if len(text) <= line_len:
@@ -242,7 +325,7 @@ def wrap_subtitle_line(text, line_len=24):
     for i in range(0, len(text), line_len):
         lines.append(text[i:i + line_len])
 
-    return "\n".join(lines[:2])
+    return "\\n".join(lines)
 
 
 def format_srt_time(seconds):
@@ -256,8 +339,102 @@ def format_srt_time(seconds):
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
+def create_srt_from_timing(slide_durations):
+    if not SUBTITLE_TIMING_PATH.exists():
+        return None
+
+    try:
+        data = json.loads(SUBTITLE_TIMING_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        log(f"读取字幕时间轴失败，将使用旧字幕算法：{e}")
+        return None
+
+    timing_map = {}
+    for slide in data.get("slides", []):
+        try:
+            slide_no = int(slide.get("slide_no"))
+        except Exception:
+            continue
+        timing_map[slide_no] = slide.get("segments", [])
+
+    subtitle_index = 1
+    current_time = 0.0
+    lines = []
+
+    for slide_no, duration in slide_durations:
+        segments = timing_map.get(int(slide_no), [])
+
+        if not segments:
+            current_time += duration
+            continue
+
+        for seg in segments:
+            text = str(seg.get("text", "")).strip()
+            if not text:
+                continue
+
+            try:
+                local_start = float(seg.get("start", 0.0))
+                local_end = float(seg.get("end", local_start + 1.0))
+            except Exception:
+                continue
+
+            start_time = current_time + max(0.0, min(local_start, duration))
+            end_time = current_time + max(0.0, min(local_end, duration))
+
+            if end_time - start_time < 0.35:
+                end_time = min(current_time + duration, start_time + 0.8)
+
+            if end_time <= start_time:
+                continue
+
+            chunks = split_subtitle_display_chunks(text)
+            if not chunks:
+                continue
+
+            seg_duration = max(0.35, end_time - start_time)
+            total_chars = sum(max(len(c), 1) for c in chunks)
+            local_time = start_time
+
+            for chunk_index, chunk in enumerate(chunks):
+                if chunk_index == len(chunks) - 1:
+                    chunk_end = end_time
+                else:
+                    weight = max(len(chunk), 1) / total_chars
+                    chunk_end = min(end_time, local_time + seg_duration * weight)
+                    if chunk_end - local_time < 0.45:
+                        chunk_end = min(end_time, local_time + 0.45)
+
+                if chunk_end <= local_time:
+                    continue
+
+                lines.append(str(subtitle_index))
+                lines.append(f"{format_srt_time(local_time)} --> {format_srt_time(chunk_end)}")
+                lines.append(wrap_subtitle_line(chunk))
+                lines.append("")
+
+                subtitle_index += 1
+                local_time = chunk_end
+
+        current_time += duration
+
+    if not lines:
+        return None
+
+    SRT_PATH.write_text("\n".join(lines), encoding="utf-8")
+    log(f"字幕文件已根据真实音频时间轴生成：{SRT_PATH}")
+    return SRT_PATH
+
+
+
 def create_srt(slide_durations):
     progress(88, "正在生成字幕文件")
+
+    timed_srt = create_srt_from_timing(slide_durations)
+    if timed_srt is not None:
+        return timed_srt
+
+    log("未找到可用的真实字幕时间轴，使用旧的按字数估算算法。")
 
     narrations = load_narrations()
     subtitle_index = 1
@@ -307,13 +484,33 @@ def create_srt(slide_durations):
     return SRT_PATH
 
 
+
+def ffmpeg_subtitle_path(path):
+    # ffmpeg subtitles 滤镜在 Windows 下不能直接吃反斜杠路径。
+    # outputs\\subtitles\\xxx.srt 会被解析成 outputssubtitlesxxx.srt。
+    # 所以这里统一转成 outputs/subtitles/xxx.srt。
+    p = Path(path)
+
+    try:
+        rel = p.relative_to(Path.cwd())
+        s = rel.as_posix()
+    except Exception:
+        s = p.resolve().as_posix()
+        s = s.replace(':', '\\:')
+
+    return s
+
+
 def burn_subtitles(input_video, srt_path, output_video):
     progress(95, "正在烧录字幕到视频")
 
-    # 注意：需要系统有中文字体。推荐安装 fonts-noto-cjk。
+    subtitle_file = ffmpeg_subtitle_path(srt_path)
+    log(f"字幕文件路径：{subtitle_file}")
+
+    # Windows 下优先使用微软雅黑；没有也不会影响字幕文件读取。
     subtitle_filter = (
-        f"subtitles='{srt_path}':"
-        "force_style='FontName=Noto Sans CJK SC,"
+        f"subtitles='{subtitle_file}':"
+        "force_style='FontName=Microsoft YaHei,"
         "FontSize=15,"
         "PrimaryColour=&H00FFFFFF,"
         "OutlineColour=&H00000000,"
@@ -333,7 +530,6 @@ def burn_subtitles(input_video, srt_path, output_video):
     ])
 
     log(f"带字幕视频已生成：{output_video}")
-
 
 def concat_segments(segment_paths, output_path):
     list_path = SEGMENT_DIR / "segments.txt"
