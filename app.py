@@ -642,4 +642,9 @@ JSON 模板和字段结构不会开放修改，避免破坏生成流程。
 
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7862)
+    demo.launch(   
+        server_name="127.0.0.1",
+        server_port=7861,
+        inbrowser=True,
+        show_error=True,
+        )
