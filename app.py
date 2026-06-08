@@ -273,8 +273,44 @@ def get_current_outputs():
 
 
 
-def run_pipeline(pdf_file, voice_label, selected_steps, progress=gr.Progress()):
+LLM_REQUIRED_STEPS = {
+    "2. 论文结构化分析",
+    "3. 构建段落证据索引",
+    "4. 规划 Grounded PPT",
+    "5. 修复 Evidence 对齐",
+    "6. 优化 PPT 文案风格",
+    "7. 生成术语注释",
+    "9. 生成讲解稿",
+    "10. 优化口播稿",
+}
+
+
+def selected_steps_need_llm(selected_steps):
+    selected_steps = selected_steps or []
+    return any(step in LLM_REQUIRED_STEPS for step in selected_steps)
+
+
+
+def run_pipeline(
+    pdf_file,
+    api_key,
+    base_url,
+    model_name,
+    voice_label,
+    selected_steps,
+    progress=gr.Progress()
+):
     log = ""
+    api_key = (api_key or "").strip()
+    base_url = (base_url or "").strip() or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    model_name = (model_name or "").strip() or "qwen-plus"
+
+    if selected_steps_need_llm(selected_steps) and not api_key:
+        raise gr.Error(
+            "需要填写 API Key：你选择的步骤中包含需要调用大模型的任务。"
+            "请先在页面顶部的“大模型 API 设置”中填写自己的 DashScope API Key。"
+            "只运行生成 PPT、生成音频、合成视频等非大模型步骤时，可以不填写 API Key。"
+        )
 
     if pdf_file is not None:
         target_pdf = INPUT_DIR / "paper.pdf"
@@ -283,6 +319,23 @@ def run_pipeline(pdf_file, voice_label, selected_steps, progress=gr.Progress()):
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+
+    # 关键：把网页里输入的 API 配置传给后续所有 Python 脚本
+    if api_key:
+        env["DASHSCOPE_API_KEY"] = api_key
+        env["QWEN_BASE_URL"] = base_url
+        env["QWEN_MODEL"] = model_name
+
+        # 同时兼容 OpenAI-compatible 写法
+        env["OPENAI_API_KEY"] = api_key
+        env["OPENAI_BASE_URL"] = base_url
+        env["OPENAI_MODEL"] = model_name
+
+        log += "已读取用户输入的 API Key，并传入生成流程。不会在日志中显示 Key 内容。\n"
+        log += f"模型：{model_name}\n"
+        log += f"Base URL：{base_url}\n"
+    else:
+        log += "未输入 API Key：本次只能运行不需要大模型的步骤。\n"
 
     voice_value = VOICE_OPTIONS[voice_label]
     if isinstance(voice_value, tuple):
@@ -385,6 +438,30 @@ with gr.Blocks(title="PaperBridge") as demo:
     gr.Markdown("# PaperBridge\n拖拽论文 PDF，生成 grounded PPT、讲解音频和讲解视频。")
 
     with gr.Tab("生成"):
+        with gr.Accordion("大模型 API 设置", open=True):
+            api_key_input = gr.Textbox(
+                label="DashScope API Key",
+                placeholder="请输入你自己的 DashScope API Key，例如 sk-xxxx",
+                type="password",
+                lines=1,
+            )
+
+            base_url_input = gr.Textbox(
+                label="Base URL",
+                value="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                lines=1,
+            )
+
+            model_input = gr.Textbox(
+                label="模型名称",
+                value="qwen-plus",
+                lines=1,
+            )
+
+            gr.Markdown(
+                "说明：API Key 只会传给本次生成流程，不会显示在日志中。"
+            )
+
         pdf_input = gr.File(
             label="拖拽论文 PDF 到这里",
             file_types=[".pdf"],
@@ -424,7 +501,14 @@ with gr.Blocks(title="PaperBridge") as demo:
 
         run_btn.click(
             fn=run_pipeline,
-            inputs=[pdf_input, voice_dropdown, steps],
+            inputs=[
+                pdf_input,
+                api_key_input,
+                base_url_input,
+                model_input,
+                voice_dropdown,
+                steps,
+            ],
             outputs=[log_box, ppt_output, video_output],
         )
 
