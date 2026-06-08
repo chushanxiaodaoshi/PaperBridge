@@ -437,6 +437,79 @@ DEFAULT_STEPS = [
 with gr.Blocks(title="PaperBridge") as demo:
     gr.Markdown("# PaperBridge\n拖拽论文 PDF，生成 grounded PPT、讲解音频和讲解视频。")
 
+    with gr.Accordion("❓ 使用说明", open=False):
+        gr.Markdown("""
+### PaperBridge 使用说明
+
+PaperBridge 可以把论文 PDF 转换为 grounded PPT、中文讲解稿、讲解音频和带字幕讲解视频。
+
+#### 1. 填写大模型 API Key
+
+在页面顶部的 **大模型 API 设置** 中填写自己的 DashScope API Key。
+
+默认配置：
+
+- Base URL：`https://dashscope.aliyuncs.com/compatible-mode/v1`
+- 模型名称：`qwen-plus`
+
+如果选择了需要调用大模型的步骤但没有填写 API Key，页面会弹出报错提示。
+
+#### 2. 上传论文 PDF
+
+在上传区域拖入论文 PDF。
+
+建议上传可复制文本的英文论文 PDF，不建议上传纯扫描版 PDF。
+
+#### 3. 选择音色
+
+默认音色是 **Edge - Yunyang 男声**，适合正式论文讲解。
+
+可以点击 **试听音色** 先听效果。
+
+#### 4. 选择执行步骤
+
+第一次使用建议保持默认全选。
+
+如果已经生成过中间文件，可以只运行部分步骤：
+
+- 只重新生成 PPT：选择“生成 PPT”
+- 只重新生成音频：选择“生成音频”
+- 只重新合成视频：选择“合成视频”
+- 修改口播风格后：运行“优化口播稿 → 生成音频 → 合成视频”
+
+#### 5. 下载结果
+
+生成完成后，右侧会出现：
+
+- 生成的 PPT
+- 生成的视频
+
+文件名会根据论文自动命名，例如：
+
+- `RLAC_PaperBridge_Slides.pptx`
+- `RLAC_PaperBridge_Video.mp4`
+
+#### 6. Prompt 编辑说明
+
+Prompt 编辑页只开放风格类 Prompt，例如：
+
+- PPT 文案风格
+- 讲解稿风格
+- 口播稿风格
+
+JSON 模板和字段结构不会开放修改，避免破坏生成流程。
+
+如果清空文本框并保存，会自动回退默认 Prompt。
+
+#### 7. Evidence 超链接说明
+
+生成的 PPT 中，Evidence 区域可以点击。
+
+点击后会跳转到 Evidence Appendix 页面，查看对应段落的原文摘录、页码、段落编号和初学者解释。
+
+在放映模式下，可以点击返回按钮回到原页面。
+        """)
+
     with gr.Tab("生成"):
         with gr.Accordion("大模型 API 设置", open=True):
             api_key_input = gr.Textbox(
