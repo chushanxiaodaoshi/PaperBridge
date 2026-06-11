@@ -1,10 +1,8 @@
 import json
+import re
 from pathlib import Path
 
 from llm_client import LLMClient
-from agents import extract_json_from_text
-
-
 def load_json(path: str):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -16,6 +14,113 @@ def save_json(data: dict, path: str):
         encoding="utf-8"
     )
     print(f"已保存：{path}")
+
+
+
+
+def extract_json_candidate(text: str) -> str:
+    """
+    从大模型回复中提取 JSON 候选文本。
+    支持：
+    1. ```json ... ``` 代码块
+    2. 普通文本中夹着一个 JSON 对象
+    """
+    text = str(text).strip()
+
+    fence = re.search(r"```(?:json)?\s*(.*?)```", text, re.S | re.I)
+    if fence:
+        text = fence.group(1).strip()
+
+    start = text.find("{")
+    end = text.rfind("}")
+
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("模型回复中没有找到完整的 JSON 对象。")
+
+    return text[start:end + 1]
+
+
+def remove_invalid_control_chars(text: str) -> str:
+    """
+    JSON 字符串里不能出现某些不可见控制字符。
+    这里保留 \n、\r、\t，去掉其它 ASCII 控制字符。
+    """
+    return "".join(
+        ch for ch in text
+        if ch in "\n\r\t" or ord(ch) >= 32
+    )
+
+
+def parse_json_strict(text: str) -> dict:
+    candidate = extract_json_candidate(text)
+    candidate = remove_invalid_control_chars(candidate)
+    return json.loads(candidate)
+
+
+def parse_json_with_llm_repair(llm: LLMClient, response: str, debug_prefix: str) -> dict:
+    """
+    第一次严格解析。
+    如果失败，把原始回复保存下来，再让大模型只做 JSON 语法修复。
+    这样可以避免因为少逗号、非法引号、控制字符等问题导致整个流程中断。
+    """
+    debug_dir = Path("outputs/debug")
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        return parse_json_strict(response)
+    except Exception as e:
+        raw_path = debug_dir / f"{debug_prefix}_raw_response.txt"
+        raw_path.write_text(str(response), encoding="utf-8", errors="replace")
+        print(f"第一次 JSON 解析失败，已保存原始回复：{raw_path}")
+        print(f"错误信息：{repr(e)}")
+
+        try:
+            candidate = extract_json_candidate(response)
+        except Exception:
+            candidate = str(response)
+
+        candidate = remove_invalid_control_chars(candidate)
+        bad_json_path = debug_dir / f"{debug_prefix}_bad_json_candidate.txt"
+        bad_json_path.write_text(candidate, encoding="utf-8", errors="replace")
+
+        repair_prompt = f"""
+下面这段内容本应是严格合法的 JSON，但现在存在语法错误。
+
+请你只做 JSON 语法修复，不要改变字段含义，不要增删主要内容。
+请严格输出一个完整 JSON 对象，不要输出 Markdown，不要输出解释。
+
+要求：
+1. 所有 key 必须使用英文双引号。
+2. 字符串必须使用英文双引号。
+3. 删除非法控制字符。
+4. 修复多余逗号、缺失逗号、未转义引号等问题。
+5. 保持 paper_title、slides、mind_map、method_flow 等字段结构。
+6. 最终回复只能是 JSON。
+
+原始错误 JSON：
+{candidate}
+"""
+
+        print("正在调用大模型修复 JSON 格式...")
+        repaired = llm.ask(
+            prompt=repair_prompt,
+            system_prompt="你是一个严格的 JSON 修复器。你只能输出合法 JSON，不要输出任何解释。"
+        )
+
+        repaired_path = debug_dir / f"{debug_prefix}_repaired_response.txt"
+        repaired_path.write_text(str(repaired), encoding="utf-8", errors="replace")
+        print(f"已保存修复后的回复：{repaired_path}")
+
+        return parse_json_strict(repaired)
+
+def parse_pid_value(value):
+    """
+    支持 9、"9"、"P9"、"p9"、"PP9" 等格式。
+    模型有时会把 evidence_paragraph_ids 写成 ["P9"]，
+    这里统一解析成整数 9。
+    """
+    m = re.search(r"\d+", str(value))
+    return int(m.group(0)) if m else None
 
 
 def build_compact_paragraph_index(paragraph_index: dict, max_paragraphs: int = 120) -> str:
@@ -52,19 +157,23 @@ def attach_verified_evidence(grounded_data: dict, paragraph_lookup: dict) -> dic
     """
     模型负责选择 paragraph_id。
     程序负责把真实 paragraph summary 附上去，避免模型自己编 evidence summary。
+
+    兼容 evidence_paragraph_ids 的多种写法：
+    [9, 10, 42]
+    ["9", "10", "42"]
+    ["P9", "P10", "P42"]
     """
     for slide in grounded_data.get("slides", []):
         ids = slide.get("evidence_paragraph_ids", [])
         verified = []
 
         clean_ids = []
-        for pid in ids:
-            try:
-                pid = int(pid)
-            except Exception:
+        for raw_pid in ids:
+            pid = parse_pid_value(raw_pid)
+            if pid is None:
                 continue
 
-            if pid in paragraph_lookup:
+            if pid in paragraph_lookup and pid not in clean_ids:
                 clean_ids.append(pid)
                 p = paragraph_lookup[pid]
                 verified.append({
@@ -120,7 +229,7 @@ class GroundedSlidePlannerAgent:
 1. 一共 10 页。
 2. 每页要有 title、purpose、main_points、evidence_paragraph_ids、visual_type、layout_hint、narration_focus。
 3. main_points 必须紧扣 evidence_paragraph_ids 对应段落，不要脱离论文。
-4. evidence_paragraph_ids 每页选 2 到 5 个，必须从段落索引中的 [P数字] 选择。
+4. evidence_paragraph_ids 每页选 2 到 5 个，必须从段落索引中的 [P数字] 选择，但输出时必须写成纯数字数组，例如 [9, 10, 42]，不要写 [P9, P10]，也不要写 [\"P9\", \"P10\"]。
 5. 第 5 页必须是真正的层级思维导图，不要只是 Background / Method / Experiments / Conclusion 四个卡片。
 6. 思维导图要体现：
    - 前置知识
@@ -210,7 +319,7 @@ class GroundedSlidePlannerAgent:
             system_prompt=system_prompt
         )
 
-        return extract_json_from_text(response)
+        return parse_json_with_llm_repair(self.llm, response, "grounded_slide_planner")
 
 
 def main():
