@@ -35,6 +35,7 @@ COLOR_GRAY = RGBColor(226, 232, 240)
 COLOR_WHITE = RGBColor(255, 255, 255)
 
 EVIDENCE_LINK_SHAPES = []
+TERM_LINK_SHAPES = []
 
 
 def truncate(text, max_len):
@@ -866,8 +867,12 @@ def create_glossary_slide(prs, glossary_items, page_index, total_pages):
         p3 = tf.add_paragraph()
         p3.space_before = Pt(1)
         r3 = p3.add_run()
-        r3.text = f"First appears: Slide {first_slide}"
+        r3.text = f"Click for details · First appears: Slide {first_slide}"
         set_run_font(r3, size=8.4, color=COLOR_MUTED)
+
+        marker_norm = normalize_marker(marker)
+        if marker_norm:
+            TERM_LINK_SHAPES.append((shape, marker_norm))
 
     y0 = 1.35
     gap = 1.02
@@ -914,6 +919,17 @@ def create_glossary_slides(prs, glossary):
 def parse_pid_value(value):
     m = re.search(r"\d+", str(value))
     return int(m.group(0)) if m else None
+
+
+def normalize_marker(value):
+    """
+    把 1、"1"、"〔1〕" 等统一成 "〔1〕"。
+    用于建立术语编号到详细解释页的跳转关系。
+    """
+    m = re.search(r"\d+", str(value))
+    if not m:
+        return ""
+    return f"〔{int(m.group(0))}〕"
 
 
 def load_paragraph_index():
@@ -1032,6 +1048,139 @@ def add_back_to_previous_button(slide, x=10.1, y=6.32, w=2.1, h=0.42):
     return shape
 
 
+def add_back_arrow_button(slide, x=0.65, y=6.25, w=0.58, h=0.42):
+    """
+    术语解释页使用的极简返回按钮：一个向左箭头。
+    PowerPoint 放映模式下跳回刚才点击进入的页面。
+    """
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE,
+        Inches(x),
+        Inches(y),
+        Inches(w),
+        Inches(h),
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = COLOR_BLUE
+    shape.line.fill.background()
+
+    set_shape_text(
+        shape,
+        "←",
+        font_size=18,
+        bold=True,
+        color=COLOR_WHITE,
+        align=PP_ALIGN.CENTER,
+    )
+
+    cNvPr = shape._element.nvSpPr.cNvPr
+    for child in list(cNvPr):
+        if child.tag.endswith("hlinkClick"):
+            cNvPr.remove(child)
+
+    from pptx.oxml import parse_xml
+    hlink = parse_xml(
+        '<a:hlinkClick xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'action="ppaction://hlinkshowjump?jump=lastslideviewed"/>'
+    )
+    cNvPr.append(hlink)
+    return shape
+
+
+def create_term_detail_slides(prs, glossary):
+    """
+    为术语表中的每一个词条生成单独的详细解释页。
+    注释表 overview 中的每个术语卡片都会跳转到对应页面。
+    """
+    term_slide_map = {}
+
+    for item in glossary:
+        marker = normalize_marker(item.get("marker", ""))
+        term = item.get("term", "")
+        explanation = item.get("explanation", "")
+        aliases = item.get("aliases", [])
+        first_slide = item.get("first_slide_no", "?")
+
+        if not marker or not term:
+            continue
+
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        add_bg(slide)
+
+        add_title(
+            slide,
+            f"Glossary Detail · {marker} {term}",
+            "A beginner-friendly explanation of one technical term."
+        )
+
+        add_appendix_text_box(
+            slide,
+            "Term",
+            str(term),
+            0.85,
+            1.45,
+            4.0,
+            0.90,
+            title_color=COLOR_BLUE,
+        )
+
+        alias_text = ", ".join(str(a) for a in aliases[:8]) if aliases else "No aliases provided."
+        add_appendix_text_box(
+            slide,
+            "Aliases",
+            alias_text,
+            5.1,
+            1.45,
+            7.35,
+            0.90,
+            title_color=COLOR_PURPLE,
+        )
+
+        add_appendix_text_box(
+            slide,
+            "Beginner-friendly explanation",
+            str(explanation),
+            0.85,
+            2.65,
+            11.6,
+            2.25,
+            title_color=COLOR_DARK,
+        )
+
+        add_appendix_text_box(
+            slide,
+            "Navigation",
+            f"First appears on Slide {first_slide}. Click the left arrow below or press Alt+Left to return.",
+            1.45,
+            6.18,
+            10.7,
+            0.55,
+            title_color=COLOR_GREEN,
+        )
+
+        add_back_arrow_button(slide)
+        term_slide_map[marker] = slide
+
+    return term_slide_map
+
+
+def apply_term_hyperlinks(term_slide_map):
+    linked = 0
+    for shape, marker in TERM_LINK_SHAPES:
+        marker = normalize_marker(marker)
+        target_slide = term_slide_map.get(marker)
+        if not target_slide:
+            continue
+
+        try:
+            shape.click_action.target_slide = target_slide
+            linked += 1
+        except Exception:
+            pass
+
+    print(f"已添加术语表内部跳转链接：{linked} 个", flush=True)
+
+
 def create_evidence_appendix_slides(prs, grounded):
     used = collect_used_evidence(grounded)
 
@@ -1135,8 +1284,9 @@ def apply_evidence_hyperlinks(appendix_map):
 
 
 def create_ppt(grounded_path: str = GROUNDED_PATH, output_path=None):
-    global EVIDENCE_LINK_SHAPES
+    global EVIDENCE_LINK_SHAPES, TERM_LINK_SHAPES
     EVIDENCE_LINK_SHAPES = []
+    TERM_LINK_SHAPES = []
 
     if output_path is None:
         output_path = str(get_named_slides_path())
@@ -1172,8 +1322,13 @@ def create_ppt(grounded_path: str = GROUNDED_PATH, output_path=None):
         if s:
             create_general_slide(prs, s)
 
-    # Glossary slides: explain all technical terms
-    create_glossary_slides(prs, grounded.get("global_glossary", []))
+    # Glossary slides: every term card is clickable
+    glossary = grounded.get("global_glossary", [])
+    create_glossary_slides(prs, glossary)
+
+    # Term detail slides and internal hyperlinks
+    term_slide_map = create_term_detail_slides(prs, glossary)
+    apply_term_hyperlinks(term_slide_map)
 
     # Evidence Appendix slides and internal hyperlinks
     appendix_map = create_evidence_appendix_slides(prs, grounded)
