@@ -340,9 +340,23 @@ def normalize_marker(value):
 
 def collect_markers_from_text(text):
     """
-    从正文里收集 〔1〕〔2〕 这类术语编号。
+    从正文里收集术语编号。
+    支持：〔3〕、（3）、(3)
     """
-    return [normalize_marker(x) for x in re.findall(r"〔\s*\d+\s*〕", str(text))]
+    return [
+        normalize_marker(x)
+        for x in re.findall(r"[〔（(]\s*\d+\s*[〕）)]", str(text))
+    ]
+
+
+def strip_term_markers_for_display(text):
+    """
+    正文里已经有小问号按钮后，主文本中不再强制显示 〔3〕 这类编号。
+    """
+    text = str(text)
+    text = re.sub(r"[〔（(]\s*\d+\s*[〕）)]", "", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip()
 
 
 def collect_slide_term_markers(slide_data):
@@ -374,7 +388,7 @@ def collect_slide_term_markers(slide_data):
     return markers
 
 
-def add_term_jump_buttons(slide, markers, x=4.35, y=1.28, w=7.9, h=0.42):
+def add_term_jump_buttons(slide, markers, x=4.10, y=1.22, w=8.25, h=0.55):
     """
     在正文页加一排术语跳转按钮。
     点击 〔n〕 后直接跳到包含该术语的“专业名词注释表”页。
@@ -388,22 +402,22 @@ def add_term_jump_buttons(slide, markers, x=4.35, y=1.28, w=7.9, h=0.42):
         MSO_SHAPE.ROUNDED_RECTANGLE,
         Inches(x),
         Inches(y),
-        Inches(1.16),
+        Inches(1.42),
         Inches(h),
     )
     label.fill.solid()
     label.fill.fore_color.rgb = COLOR_LIGHT_PURPLE
     label.line.color.rgb = COLOR_PURPLE
     label.line.width = Pt(0.8)
-    set_shape_text(label, "术语跳转", font_size=10.2, bold=True, color=COLOR_PURPLE, align=PP_ALIGN.CENTER)
+    set_shape_text(label, "术语跳转", font_size=11.2, bold=True, color=COLOR_PURPLE, align=PP_ALIGN.CENTER)
 
     created = []
     btn_w = 0.72
-    gap = 0.07
-    start_x = x + 1.30
+    gap = 0.10
+    start_x = x + 1.58
 
-    # 最多显示 9 个，避免遮挡正文
-    for i, marker in enumerate(markers[:9]):
+    # 最多显示 7 个，避免遮挡正文
+    for i, marker in enumerate(markers[:7]):
         bx = start_x + i * (btn_w + gap)
         if bx + btn_w > x + w:
             break
@@ -419,7 +433,7 @@ def add_term_jump_buttons(slide, markers, x=4.35, y=1.28, w=7.9, h=0.42):
         btn.fill.fore_color.rgb = COLOR_WHITE
         btn.line.color.rgb = COLOR_PURPLE
         btn.line.width = Pt(0.9)
-        set_shape_text(btn, marker, font_size=10.2, bold=True, color=COLOR_PURPLE, align=PP_ALIGN.CENTER)
+        set_shape_text(btn, marker, font_size=11.6, bold=True, color=COLOR_PURPLE, align=PP_ALIGN.CENTER)
 
         TERM_LINK_SHAPES.append((btn, marker))
         created.append(btn)
@@ -463,6 +477,101 @@ def add_back_arrow_button(slide, x=0.65, y=6.70, w=0.58, h=0.36):
         'action="ppaction://hlinkshowjump?jump=lastslideviewed"/>'
     )
     cNvPr.append(hlink)
+    return shape
+
+
+def add_bullet_box_with_term_questions(slide, title, items, x, y, w, h, max_item_len=105):
+    """
+    Main points 专用版本：
+    - 保留原来的大白框；
+    - 每条 bullet 单独排版；
+    - 如果这一条里含有术语编号，就在该条右侧贴小问号；
+    - 小问号链接到对应的专业名词注释表页。
+    """
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE,
+        Inches(x),
+        Inches(y),
+        Inches(w),
+        Inches(h),
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = COLOR_WHITE
+    shape.line.color.rgb = COLOR_GRAY
+    shape.line.width = Pt(1)
+
+    # 标题
+    title_box = slide.shapes.add_textbox(
+        Inches(x + 0.18),
+        Inches(y + 0.28),
+        Inches(w - 0.36),
+        Inches(0.42),
+    )
+    tf = title_box.text_frame
+    tf.clear()
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    r = p.add_run()
+    r.text = title
+    set_run_font(r, size=16, bold=True, color=COLOR_DARK)
+
+    # bullet 区域
+    safe_items = list(items or [])
+    count = max(len(safe_items), 1)
+    start_y = y + 0.98
+    usable_h = max(h - 1.25, 1.0)
+    row_h = min(0.78, usable_h / count)
+
+    for idx, item in enumerate(safe_items):
+        markers = collect_markers_from_text(item)
+        # 保留正文中的术语编号，例如 rubric〔3〕 / rubric（3）。
+        # 小问号只是额外跳转入口，不替代原来的编号。
+        display = "• " + truncate(str(item), max_item_len)
+
+        row_y = start_y + idx * row_h
+
+        tb = slide.shapes.add_textbox(
+            Inches(x + 0.28),
+            Inches(row_y),
+            Inches(w - 0.92),
+            Inches(row_h),
+        )
+        tf = tb.text_frame
+        tf.clear()
+        tf.word_wrap = True
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        tf.margin_left = Inches(0.02)
+        tf.margin_right = Inches(0.02)
+        tf.margin_top = Inches(0.01)
+        tf.margin_bottom = Inches(0.01)
+
+        p = tf.paragraphs[0]
+        r = p.add_run()
+        r.text = display
+        set_run_font(r, size=14, color=COLOR_TEXT)
+
+        # 小问号贴在本条 bullet 右侧
+        for j, marker in enumerate(markers[:3]):
+            q_size = 0.22
+            gap = 0.06
+            qx = x + w - 0.58 + j * (q_size + gap)
+            qy = row_y + 0.06
+
+            q = slide.shapes.add_shape(
+                MSO_SHAPE.OVAL,
+                Inches(qx),
+                Inches(qy),
+                Inches(q_size),
+                Inches(q_size),
+            )
+            q.fill.solid()
+            q.fill.fore_color.rgb = COLOR_LIGHT_PURPLE
+            q.line.color.rgb = COLOR_PURPLE
+            q.line.width = Pt(0.8)
+            set_shape_text(q, "?", font_size=8.8, bold=True, color=COLOR_PURPLE, align=PP_ALIGN.CENTER)
+
+            TERM_LINK_SHAPES.append((q, marker))
+
     return shape
 
 
@@ -868,11 +977,8 @@ def create_general_slide(prs, slide_data):
 
     add_label(slide, f"Visual type: {visual_type}", 0.65, 1.28, 3.5, 0.42, COLOR_GREEN)
 
-    # 正文页术语跳转：点击 〔n〕 跳到对应术语表页
-    add_term_jump_buttons(slide, collect_slide_term_markers(slide_data), 4.35, 1.28, 7.9, 0.30)
-
     # 左侧：主要观点，拉高
-    add_bullet_box(
+    add_bullet_box_with_term_questions(
         slide,
         "Main points",
         main_points[:5],

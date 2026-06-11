@@ -822,10 +822,10 @@ def run_pipeline(
             current_ppt, current_video = get_current_outputs()
 
             if "生成 PPT" in step and current_ppt:
-                log += f"\nPPT 已生成，可以在右侧下载：{current_ppt}\n"
+                log += f"\nPPT 已生成，可以在右侧下载：{current_ppt}，或直接打开outputs输出文件夹下载\n"
 
             if "合成视频" in step and current_video:
-                log += f"\n视频已生成，可以在右侧下载：{current_video}\n"
+                log += f"\n视频已生成，可以在右侧下载：{current_video}，或直接打开outputs输出文件夹下载\n"
 
                 # 视频生成成功后立即清理中间文件。
                 # 注意：必须在这里调用；只定义 cleanup_output_intermediates 不会自动执行。
