@@ -398,7 +398,7 @@ def add_term_jump_buttons(slide, markers, x=4.35, y=1.28, w=7.9, h=0.42):
     set_shape_text(label, "术语跳转", font_size=10.2, bold=True, color=COLOR_PURPLE, align=PP_ALIGN.CENTER)
 
     created = []
-    btn_w = 0.54
+    btn_w = 0.72
     gap = 0.07
     start_x = x + 1.30
 
@@ -869,7 +869,7 @@ def create_general_slide(prs, slide_data):
     add_label(slide, f"Visual type: {visual_type}", 0.65, 1.28, 3.5, 0.42, COLOR_GREEN)
 
     # 正文页术语跳转：点击 〔n〕 跳到对应术语表页
-    add_term_jump_buttons(slide, collect_slide_term_markers(slide_data), 4.35, 1.28, 7.9, 0.42)
+    add_term_jump_buttons(slide, collect_slide_term_markers(slide_data), 4.35, 1.28, 7.9, 0.30)
 
     # 左侧：主要观点，拉高
     add_bullet_box(
